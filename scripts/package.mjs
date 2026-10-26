@@ -13,6 +13,7 @@ import path from 'node:path'
 import process from 'node:process'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
+import { rcedit } from 'rcedit'
 
 const require = createRequire(import.meta.url)
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
@@ -35,6 +36,31 @@ async function copyRuntime() {
   const sourceExe = path.join(outDir, 'electron.exe')
   if (!fs.existsSync(sourceExe)) throw new Error(`Electron 运行时缺少 electron.exe：${sourceExe}`)
   await fsp.rename(sourceExe, path.join(outDir, exeName))
+}
+
+/** 把 Logo / 产品版本信息写入 MoDex.exe（文件资源管理器、快捷方式、任务栏都使用它） */
+async function applyExeMetadata() {
+  const exePath = path.join(outDir, exeName)
+  const iconPath = path.join(projectRoot, 'assets', 'icon.ico')
+  if (!fs.existsSync(iconPath)) {
+    throw new Error('缺少 assets/icon.ico；请先运行 npm run icons')
+  }
+  await rcedit(exePath, {
+    icon: iconPath,
+    'file-version': pkg.version,
+    'product-version': pkg.version,
+    'version-string': {
+      CompanyName: 'crispy-A',
+      FileDescription: 'MoDex · 轻量化 Markdown 编辑器',
+      FileVersion: pkg.version,
+      InternalName: 'MoDex',
+      LegalCopyright: `Copyright © ${new Date().getFullYear()} crispy-A`,
+      OriginalFilename: exeName,
+      ProductName: 'MoDex',
+      ProductVersion: pkg.version,
+    },
+  })
+  console.log('[package] 已写入 Logo 与版本信息：', exeName)
 }
 
 async function copyApp() {
@@ -85,6 +111,7 @@ async function main() {
   }
   console.log('[package] 复用 Electron 运行时：', electronDist)
   await copyRuntime()
+  await applyExeMetadata()
   await copyApp()
 
   const size = await directorySize(outDir)

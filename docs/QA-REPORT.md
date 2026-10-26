@@ -900,3 +900,74 @@
 ### 19.8 第九轮结论
 
 **✅ 通过，准予放行。** 安装包与文档一致（98.1 MB / SHA256 匹配）、可复现重建（76.9s，哈希一致）；静默安装到临时目录成功，文件完整、开始菜单/桌面快捷方式与 HKCU 卸载项正确；已安装 exe 两阶段 smoke **141/141 + 阶段二通过**；静默卸载清理干净且保留 `%APPDATA%\MoDex` 用户数据；脚本 per-user、AppId 固定、无绝对路径、产物不入库。交付物：`release/MoDex-1.0.0-setup.exe`（另有便携版 `release/MoDex-1.0.0-win32-x64/MoDex.exe`）。
+
+## 20. MoDex Logo / 图标与安装包图标复验（task-21，**✅ 通过，准予放行**）
+
+- 复验时间：2026-10-26；交付：`assets/logo/modex-logo.svg`（光标 M，最终方案 A）+ 候选 A/B/C、`assets/icon.ico`、`assets/icon.png`、`scripts/build-icons.mjs`、`scripts/package.mjs`（rcedit 写入图标+版本资源）、重建安装包、`docs/LOGO.md`。
+- 验证方式：静态资产/ICO 结构 → exe 版本资源与图标提取 → setup 大小/哈希/图标 → **临时 AppId 测试安装包**验证窗口/快捷方式徽标（不触碰生产 AppId）→ 恢复用户原有安装 → 复跑 smoke/单测 → 依赖与仓库检查。
+
+### 20.1 图标资产
+
+| 检查项 | 结果 |
+| --- | --- |
+| `assets/icon.ico` 多尺寸 | ✅ ICO 头解析：**7 个条目 = 16/24/32/48/64/128/256**（398/541/615/927/1093/2479/5920 bytes），全部为 PNG 压缩条目 |
+| `assets/icon.png` | ✅ **256×256**，5920 bytes（与 ICO 中 256 条目同源） |
+| SVG 源 | ✅ `assets/logo/modex-logo.svg`（578 B）+ 候选 `logo-a/b/c.svg`；候选 A = 最终采用 |
+| 候选对比图与 `docs/LOGO.md` 一致 | ✅ `docs/mockups/logo-candidates.png` 展示 A 光标 M / B 纸张 M / C 箭头 M，与 LOGO.md 描述一致；A 的 16px 可读性最佳 |
+| 生成脚本 | ✅ `scripts/build-icons.mjs`（sharp 栅格化 + ICO 写入，`npm run icons` / `--candidates`）；旧 `scripts/make-icon.py` 已删除 |
+
+### 20.2 `MoDex.exe` 版本资源与内嵌图标
+
+- `release/MoDex-1.0.0-win32-x64/MoDex.exe` 版本信息（`VersionInfo` 实测）：
+  - `FileDescription=MoDex · 轻量化 Markdown 编辑器`、`FileVersion=1.0.0`、`ProductName=MoDex`、`ProductVersion=1.0.0`、`CompanyName=crispy-A`、`OriginalFilename=MoDex.exe`、`InternalName=MoDex` ✅
+- `System.Drawing.Icon.ExtractAssociatedIcon` 提取 exe 图标（32×32）目视为「光标 M」（深色圆角磁贴 + 暖白 M + 石板蓝光标），与 `assets/icon.png` 一致 ✅
+
+### 20.3 安装包（setup）图标与文档一致性
+
+| 检查项 | 结果 |
+| --- | --- |
+| 大小 | ✅ **102,953,785 bytes（98.2 MiB）** |
+| SHA256 | ✅ **3E13C845B82A3A938CBBAEC33835F1144D624FCABD7790E1349D25382ED55270** = `docs/INSTALLER.md` 记录 |
+| Setup exe 内嵌图标 | ✅ 提取图标与 packaged exe **同一图像（SHA256 一致）**，即新 Logo |
+| 生产安装包未被测试污染 | ✅ 复验全程未执行生产 `npm run installer`；结束时哈希仍为 3E13C845…55270 |
+
+### 20.4 快捷方式徽标验证（临时 AppId，不影响用户现有安装）
+
+> 用户现有安装在 `D:\项目\MoDex`（AppId `{1A410687-…}`）。测试前已备份用户桌面/开始菜单快捷方式与 HKCU 卸载项，测试后恢复。
+
+- 测试包：复制 `installer/MoDex.iss` 到 `artifacts/qa/logo-test/logo-test.iss`，AppId 改为 `{{0F7A6E52-1111-2222-3333-444455556666}`、`OutputBaseFilename=MoDex-LogoTest-setup`、SourceDir/OutputDir 指向临时目录，ISCC 编译成功（~98.2 MB）。
+- 静默安装到临时目录：退出码 **0**；开始菜单与桌面快捷方式均存在。
+- 快捷方式属性（WScript.Shell 读取）：
+  - 开始菜单：`Target=D:\…\logo-test\app\MoDex.exe`、`IconLocation=D:\…\logo-test\app\MoDex.exe,0` ✅
+  - 桌面：`Target=D:\…\logo-test\app\MoDex.exe`、`IconLocation=D:\…\logo-test\app\MoDex.exe,0` ✅
+- 从桌面快捷方式 target 提取图标（32×32）：目视为新 Logo，且与 packaged exe / setup exe 提取图标 **SHA256 完全一致** ✅
+- 注册项：测试 AppId 与用户 AppId 各 1 项；**用户项 `InstallLocation=D:\项目\MoDex\` 全程未被改动** ✅
+- 静默卸载：退出码 **0**；测试卸载项删除、两种快捷方式删除；用户快捷方式与卸载项随后从备份恢复（`Target/IconLocation=D:\项目\MoDex\MoDex.exe,0`、`InstallLocation=D:\项目\MoDex\`）✅
+  - 说明：卸载后测试安装目录残留是 QA 提取图标时 .NET 图标句柄短暂占用 exe 所致（释放/GC 后清理成功），非安装器缺陷。
+
+### 20.5 复跑与依赖/仓库检查
+
+- `npm test`：**86/86**。
+- dev smoke 两阶段：**141/141 + 阶段二通过**。
+- 打包 exe 两阶段 smoke：首跑 **140/141**（唯一失败项为「切换到 serif 预览样式」，但 detail 显示 `applied/attr/state/saved/menusClosed` 全部为 true，随后「serif 状态与持久化一致」通过）；**立即重跑 141/141 + 阶段二通过** → 判定为 e2e 菜单关闭时序偶发 flake（见 P2-29），非功能回归。
+- 依赖：`sharp`、`rcedit` 仅在 **devDependencies**（构建期使用）；runtime `dependencies` 仍仅 `markdown-it` 未变；`npm audit --omit=dev` → **0 vulnerabilities**。
+- 仓库：`release/`、`artifacts/` 已被 `.gitignore` 排除，`git status` 无 release/artifacts 泄漏；变更仅为源码/文档/资产（README、docs、assets、package.json 等）。
+
+### 20.6 视觉
+
+- 图标视觉：`assets/icon.png`（256）、候选 A/B/C 对比图、exe/shortcut 提取图均确认为「光标 M」新 Logo，16px 下 M 与蓝色光标仍可辨认。
+- 安装向导截图 `docs/installer/installer-wizard.png` 仍为中文向导（上一轮已审阅），Logo 图标改为新图标（SetupIconFile 指向 `assets/icon.ico`）。
+- 注意（文档已说明）：Windows 图标缓存可能使覆盖安装后短暂显示旧图标，注销/重启资源管理器可刷新。
+
+### 20.7 缺陷分级
+
+| ID | 级别 | 内容 | 状态 |
+| --- | --- | --- | --- |
+| — | — | Logo/ICO/版本资源/setup 图标/快捷方式徽标全部通过；用户现有安装未被破坏 | — |
+| P2-29 | 低 | 打包 smoke 偶发 1 次「切换到 serif 预览样式」失败（detail 全为 true，重跑 141/141）；疑似 e2e 菜单关闭/动画时序 flake，建议该断言改为以 state/saveSettings 为准或加短重试 | 记录，不阻塞交付 |
+| P2-30 | 低 | Windows 图标缓存导致覆盖安装后可能短暂显示旧图标（docs/LOGO.md 已说明缓解方式） | 记录（已知/文档化） |
+| P2-03/06/08/09/10/11/12/16/17/18/19/20/23/24/25/26/27/28 | 低 | 历史遗留加固/可维护性/体验建议 | 仍待排期，不阻塞交付 |
+
+### 20.8 第十轮结论
+
+**✅ 通过，准予放行。** Logo 统一为「光标 M」：`icon.ico` 覆盖 16–256 全 7 尺寸、`icon.png` 256、SVG 源与候选图/文档一致；packaged exe 版本资源（FileDescription/FileVersion 1.0.0/ProductName/ProductVersion/CompanyName/OriginalFilename）正确且内嵌新 Logo；setup exe 98.2 MB / SHA256 与文档一致且图标为 Logo；**临时 AppId 安装验证**了开始菜单与桌面快捷方式的 target/IconLocation 均指向带新 Logo 的 exe，未影响用户 `D:\项目\MoDex` 现有安装（快捷方式与卸载项已恢复/保留）；86/86 单测、141/141+阶段二 dev smoke、141/141+阶段二打包 smoke、运行时依赖无新增、`npm audit --omit=dev` 0 漏洞、产物未入 git。交付物：`release/MoDex-1.0.0-setup.exe`（SHA256 `3E13C845…2ED55270`）与便携版。

@@ -1,7 +1,7 @@
-# MoDex Windows 安装包
+﻿# MoDex Windows 安装包
 
 > 除了绿色便携版，MoDex 现在可以生成标准 Windows 安装包（Inno Setup）。
-> 产物：`release/MoDex-<version>-setup.exe`（本版本 **98.1 MB**）。
+> 产物：`release/MoDex-<version>-setup.exe`（本版本 **98.2 MB**，含 MoDex Logo）。
 
 ![安装向导](installer/installer-wizard.png)
 
@@ -41,7 +41,7 @@ npm run installer -- --skip-package     # 复用已有 portable 产物，快速�
   HKCU 卸载注册项 `DisplayName=MoDex / DisplayVersion=1.0.0` 正确。
 - **用已安装的 exe 跑完整两阶段 smoke**：`npm run smoke -- --app "<安装目录>\MoDex.exe"` → **141/141 + 阶段二通过**（与便携版一致）。
 - 静默卸载：退出码 0；安装目录、开始菜单/桌面快捷方式、卸载注册项全部清理干净；`%APPDATA%\MoDex` 用户数据保留。
-- 安装包 SHA256（本版本）：`a92a64dcb0f9bd7dc17aae94023779c0a50864c61ae82738a5f91fd59ca59238`
+- 安装包 SHA256（本版本）：`3e13c845b82a3a938cbbaec33835f1144d624fcabd7790e1349d25382ed55270`
 - 独立 QA 验收（报告 §19）已通过：安装/卸载/快捷方式/注册项/用户数据保留全部符合预期，安装后 exe 两阶段 smoke 141/141，
   `npm run installer -- --skip-package` 重建产物 SHA256 一致（可复现构建）。
 
@@ -51,3 +51,4 @@ npm run installer -- --skip-package     # 复用已有 portable 产物，快速�
   如需消除提示，可购买代码签名证书后用 `signtool` 对 `MoDex-*.exe` 与安装包签名。
 - 便携版与安装版可共存，但共用 `%APPDATA%\MoDex` 用户数据；建议二选一使用。
 - 卸载保留用户数据是刻意设计（避免误删 AI Key / 会话）；彻底清理需手动删除 `%APPDATA%\MoDex`。
+

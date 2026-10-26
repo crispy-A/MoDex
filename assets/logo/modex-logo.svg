@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- MoDex Logo 候选 A：M + 输入光标（编辑/写作） -->
+  <rect x="0" y="0" width="256" height="256" rx="58" fill="#17181a"/>
+  <rect x="2" y="2" width="252" height="252" rx="56" fill="none" stroke="#fafaf8" stroke-opacity="0.08" stroke-width="4"/>
+  <path d="M46 188 V84 L108 146 L170 84 V188"
+        fill="none" stroke="#fafaf8" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="192" y="140" width="18" height="48" rx="9" fill="#8fb0cf"/>
+</svg>

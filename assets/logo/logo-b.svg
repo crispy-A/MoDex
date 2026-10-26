@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- MoDex Logo 候选 B：Markdown 纸张 + M（文档/写作） -->
+  <path d="M52 0 H168 L256 88 V204 A52 52 0 0 1 204 256 H52 A52 52 0 0 1 0 204 V52 A52 52 0 0 1 52 0 Z" fill="#fafaf8"/>
+  <path d="M168 0 L256 88 L168 88 Z" fill="#e7e6df"/>
+  <path d="M56 196 V96 L128 158 L200 96 V196"
+        fill="none" stroke="#17181a" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="56" y="216" width="64" height="10" rx="5" fill="#4a6b8a"/>
+</svg>

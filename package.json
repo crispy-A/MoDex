@@ -12,12 +12,15 @@
     "test": "node --test \"tests/**/*.test.mjs\"",
     "smoke": "node scripts/smoke.mjs",
     "package": "node scripts/package.mjs",
-    "installer": "node scripts/installer.mjs"
+    "installer": "node scripts/installer.mjs",
+    "icons": "node scripts/build-icons.mjs"
   },
   "dependencies": {
     "markdown-it": "^14.1.0"
   },
   "devDependencies": {
-    "electron": "40.10.2"
+    "electron": "40.10.2",
+    "rcedit": "^5.0.2",
+    "sharp": "^0.35.5"
   }
 }

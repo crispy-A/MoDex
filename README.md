@@ -1,4 +1,6 @@
-# MoDex · 轻量化 Markdown 编辑器
+﻿# MoDex · 轻量化 Markdown 编辑器
+
+<p align="left"><img src="assets/icon.png" width="88" alt="MoDex Logo"></p>
 
 > 本地优先的 Markdown 桌面编辑器：编辑、实时预览、文件与文件夹管理，纯离线、无需账号。
 > 界面采用 Codex 风格的单色设计语言：发丝线分区、精密排版、低装饰、键盘优先。
@@ -84,7 +86,7 @@
 
 ```powershell
 cd md-editor
-npm install      # 首次安装 electron（开发依赖）与 markdown-it（仅用于生成 vendor 文件）
+npm install      # 首次安装 electron / markdown-it（vendor）/ sharp（图标生成）/ rcedit（写 exe 资源）
 npm start        # 启动应用
 ```
 
@@ -114,6 +116,12 @@ npm run package
 打包脚本复用 `node_modules/electron/dist` 已解压的运行时，把 `src/` 与 `assets/` 放进
 `resources/app/`，无需 electron-builder、无需联网下载，产物为绿色免安装目录，双击 exe 即用。
 
+## Logo
+
+- 品牌标识「光标 M」：近黑圆角磁贴 + 暖白几何 M + 石板蓝输入光标；矢量源 `assets/logo/modex-logo.svg`。
+- 统一用于窗口/任务栏、桌面与开始菜单快捷方式、`MoDex.exe` 文件图标与安装包（打包时用 rcedit 写入）。
+- 重新生成：`npm run icons`；设计说明与候选对比见 [docs/LOGO.md](docs/LOGO.md)。
+
 ## 生成 Windows 安装包
 
 ```powershell
@@ -126,7 +134,7 @@ npm run installer
 
 - 按用户安装到 `%LOCALAPPDATA%\Programs\MoDex`，**无需管理员权限**；创建开始菜单/桌面快捷方式与标准卸载程序；
 - 升级使用固定 AppId 覆盖安装；**卸载保留** `%APPDATA%\MoDex`（设置、AI 会话与加密后的 API Key），重装自动恢复；
-- 安装包未签名，首次运行 SmartScreen 可能提示「未知发布者」；详细说明、构建参数与验证记录见
+- 安装包未签名，首次运行 SmartScreen 可能提示「未知发布者」；桌面/开始菜单图标为 MoDex Logo；详细说明、构建参数与验证记录见
   [docs/INSTALLER.md](docs/INSTALLER.md)。
 - 已用「安装 → 已安装 exe 跑完整两阶段 smoke（141/141 + 阶段二）→ 静默卸载」验证清理干净。
 
@@ -180,7 +188,7 @@ P0=0、P1=0；P2 中的「外部修改覆盖」「IPC 来源校验」「CSP 补�
 
 ```text
 md-editor/
-├── assets/                 应用图标（icon.ico 由 scripts/make-icon.py 生成）
+├── assets/                 应用图标（assets/logo/*.svg → npm run icons → icon.ico/png）
 ├── docs/                   接口契约、渲染层规格、Codex 风格设计规范、QA 报告、截图
 ├── scripts/                启动器、端到端验收、便携版打包、图标生成
 ├── src/
@@ -220,7 +228,11 @@ md-editor/
 - 渲染层零依赖、零构建：`src/renderer/vendor/markdown-it.min.js` 为内置第三方库（构建时从 `node_modules` 复制，仓库内固定资产），其余全部为原生 ES Module。
 - 主进程只依赖 Node 内置模块与 Electron，因此打包无需携带 `node_modules`。
 - 自定义协议 `app://bundle/` 提供 ES Module 与 CSP；`app://file/` 只代理图片扩展名，供预览本地图片。
+- 应用图标以 `assets/logo/modex-logo.svg` 为单一矢量源：`npm run icons` 用 sharp 生成多尺寸 ICO/PNG，`npm run package` 用 rcedit 把图标与产品版本信息写入 `MoDex.exe`；安装包/快捷方式使用该 exe 图标。
 - 端到端验收通过 CDP `Page.captureScreenshot` 截图（能包含右键菜单等浮层），失败时回退 `webContents.capturePage`。
 - 更名说明：应用原名为「轻墨 / QingMo」，本版本更名为 **MoDex**；用户数据目录随产品名变为 `%APPDATA%\MoDex`。
+
+
+
 
 
