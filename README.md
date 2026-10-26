@@ -114,6 +114,22 @@ npm run package
 打包脚本复用 `node_modules/electron/dist` 已解压的运行时，把 `src/` 与 `assets/` 放进
 `resources/app/`，无需 electron-builder、无需联网下载，产物为绿色免安装目录，双击 exe 即用。
 
+## 生成 Windows 安装包
+
+```powershell
+winget install JRSoftware.InnoSetup   # 首次：安装 Inno Setup 6（仅构建机需要）
+npm run installer
+# 产物：release/MoDex-1.0.0-setup.exe（约 98 MB）
+```
+
+![安装向导](docs/installer/installer-wizard.png)
+
+- 按用户安装到 `%LOCALAPPDATA%\Programs\MoDex`，**无需管理员权限**；创建开始菜单/桌面快捷方式与标准卸载程序；
+- 升级使用固定 AppId 覆盖安装；**卸载保留** `%APPDATA%\MoDex`（设置、AI 会话与加密后的 API Key），重装自动恢复；
+- 安装包未签名，首次运行 SmartScreen 可能提示「未知发布者」；详细说明、构建参数与验证记录见
+  [docs/INSTALLER.md](docs/INSTALLER.md)。
+- 已用「安装 → 已安装 exe 跑完整两阶段 smoke（141/141 + 阶段二）→ 静默卸载」验证清理干净。
+
 ## 测试与验收
 
 ```powershell
@@ -143,7 +159,7 @@ npm run smoke -- --app "release/MoDex-1.0.0-win32-x64/MoDex.exe"   # 验收打�
 16 微动效专项），
 P0=0、P1=0；P2 中的「外部修改覆盖」「IPC 来源校验」「CSP 补全」「图片响应 CSP」「第二实例打开」已修复，
 其余 P2 为不阻塞的后续建议。*（报告中的「轻墨」为更名前名称，即本产品 MoDex。）*
-多文件夹、单条导航栏、自动保存、预览样式、AI 助手与微动效的验收见报告 §13/§14/§15/§16/§17/§18；AI 实现契约见
+多文件夹、单条导航栏、自动保存、预览样式、AI 助手、微动效与安装包的验收见报告 §13/§14/§15/§16/§17/§18/§19；AI 实现契约见
 `docs/AI-PANEL-SPEC.md`，设计稿见 `docs/mockups/`；7 套预览样式的调研对比见 `docs/MARKDOWN-STYLE-GALLERY.md`。
 
 ## 快捷键

@@ -827,3 +827,76 @@
 ### 18.4 第八轮结论
 
 **✅ 通过，准予放行。** 微动效实现克制（120–190ms、无弹跳/缩放滥用），菜单/查找栏/侧栏/AI 面板/设置弹窗/按钮按压动效与布局过渡按时序正确、结束后无残留；侧栏隐藏宽 0、AI 面板开合布局可恢复、拖拽调宽无过渡迟滞、900×600 无溢出；`prefers-reduced-motion` 完整降级；86/86 单测、141/141+阶段二 dev 与打包 smoke、23/23 资源一致、无视觉/功能回归。最终交付物：`release/MoDex-1.0.0-win32-x64/MoDex.exe`。
+
+## 19. Windows 安装包（Inno Setup）复验（task-20，**✅ 通过，准予放行**）
+
+- 复验时间：2026-10-26；交付：`release/MoDex-1.0.0-setup.exe`、`installer/MoDex.iss`、`installer/ChineseSimplified.isl`、`scripts/installer.mjs`、`docs/INSTALLER.md`、`docs/installer/installer-wizard.png`
+- 验证方式：SHA256/大小核对 → `npm run installer -- --skip-package` 重建 → 静默安装到临时目录 → 已安装 exe 两阶段 smoke → 静默卸载 → 清理与用户数据保留核验；全程严格串行、临时目录结束时清理。
+
+### 19.1 产物与构建
+
+| 检查项 | 结果 | 证据 |
+| --- | --- | --- |
+| 安装包存在、大小 98.1 MB | ✅ | `release/MoDex-1.0.0-setup.exe` = **102,858,733 bytes（98.1 MiB）** |
+| SHA256 与 `docs/INSTALLER.md` 一致 | ✅ | 实测 `A92A64DCB0F9BD7DC17AAE94023779C0A50864C61AE82738A5F91FD59CA59238` = 文档值 |
+| `npm run installer -- --skip-package` 可重建 | ✅ | exit 0，用时 **76.9s**（lzma2/max），产物大小/SHA256 **与重建前完全一致（可复现构建）**；ISCC 自动定位到 `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe` |
+| 构建脚本质量 | ✅ | `scripts/installer.mjs` 自动查找 ISCC（env `INNO_SETUP_ISCC`/默认路径）、`--skip-package` 复用便携版、中文语言文件自动启用、无硬编码绝对仓库路径（路径由 `__dirname` 推导）；`.gitignore` 含 `release/`、`artifacts/` |
+
+### 19.2 静默安装（临时目录 `artifacts/qa/installer-test/app`）
+
+命令：`MoDex-1.0.0-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=<temp>`
+
+| 检查项 | 结果 |
+| --- | --- |
+| 安装退出码 | ✅ **0** |
+| 关键文件 | ✅ `MoDex.exe`、`resources/app/src/main/ai/ai-service.js`、`unins000.exe` 均存在 |
+| 文件数与体积 | ✅ **150 个文件 / 338.8 MB**（与 `INSTALLER.md` 记录一致） |
+| 开始菜单快捷方式 | ✅ `%APPDATA%\Microsoft\Windows\Start Menu\Programs\MoDex.lnk` |
+| 桌面快捷方式 | ✅ `C:\Users\Administrator\Desktop\MoDex.lnk` |
+| HKCU 卸载项 | ✅ `DisplayName=MoDex`、`DisplayVersion=1.0.0`、`InstallLocation=<安装目录>\`、`UninstallString="<安装目录>\unins000.exe"`、`DisplayIcon=<安装目录>\MoDex.exe` |
+| 安装范围 | ✅ 按用户安装（`PrivilegesRequired=lowest`、`DefaultDirName={localappdata}\Programs\MoDex`），临时目录安装无需管理员 |
+
+### 19.3 已安装应用可运行（两阶段 smoke）
+
+- `npm run smoke -- --app "<安装目录>\MoDex.exe"` → **141/141 + 阶段二通过**（exit 0；AI mock、打开/编辑/保存、自动保存、关闭自动保存全部通过），与便携版一致。
+
+### 19.4 静默卸载
+
+命令：`<安装目录>\unins000.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`
+
+| 检查项 | 结果 |
+| --- | --- |
+| 卸载退出码 | ✅ **0** |
+| 安装目录 | ✅ 已删除（`dir-exists=False`） |
+| 开始菜单 / 桌面快捷方式 | ✅ 均已移除 |
+| HKCU 卸载注册项 | ✅ 已移除（查询无 MoDex 项） |
+| `%APPDATA%\MoDex` 用户数据 | ✅ **保留**（预置 marker 文件卸载后仍存在；随后由 QA 清理 marker） |
+| 临时目录清理 | ✅ 测试后 `artifacts/qa/installer-test` 已删除，`%APPDATA%\MoDex` marker 已清理 |
+
+### 19.5 脚本安全/质量审查
+
+- **AppId 固定**：`{{1A410687-CD96-40EB-93FE-B93A28544FAB}`，支持覆盖安装/升级。
+- **per-user**：`PrivilegesRequired=lowest`、安装目录 `{localappdata}\Programs\MoDex`，不写 HKLM、无需管理员。
+- **卸载不删用户数据**：ISS 未配置删除 `%APPDATA%\MoDex` 的 `[UninstallDelete]`；实测 marker 保留。
+- **无绝对路径写死**：源码使用 `{#SourceDir}`/`{#OutputDir}` 等 define（由构建脚本按项目根推导），仓库内无机器相关绝对路径。
+- **产物不入库**：`release/` 与 `artifacts/` 均已在 `.gitignore`；安装包/用户数据不在源码目录。
+- 卸载前 `taskkill /IM MoDex.exe` 静默关闭运行实例（`runhidden`），避免文件占用。
+
+### 19.6 视觉
+
+- 审阅 `docs/installer/installer-wizard.png`：**简体中文向导**（「安装 - MoDex 1.0.0」「选择目标位置」），默认目录 `${LOCALAPPDATA}\Programs\MoDex`（按用户）正确，磁盘需求提示 338.8 MB，按钮「下一步/取消」本地化正常。
+- README「生成 Windows 安装包」章节与 `docs/INSTALLER.md` 内容/命令/哈希一致。
+
+### 19.7 缺陷分级
+
+| ID | 级别 | 内容 | 状态 |
+| --- | --- | --- | --- |
+| — | — | 本轮未发现 P0/P1；安装/运行/卸载/用户数据保留全部通过 | — |
+| P2-26 | 低 | 未做代码签名：首次运行 SmartScreen 会提示「未知发布者」（文档已说明；建议后续签名以消除提示并提升信任度） | 记录，不阻塞交付 |
+| P2-27 | 低 | 安装后的 `MoDex.exe` 文件版本资源显示 Electron 运行时版本（40.10.2），而非产品版本 1.0.0（安装器 DisplayVersion 正确显示 1.0.0）；建议在打包阶段写入产品版本资源 | 记录，不阻塞交付 |
+| P2-28 | 低 | 未执行「同版本重复安装/升级」实测（可选要求，时间限制）；Inno 固定 AppId + `UsePreviousAppDir=yes` 设计上支持覆盖安装 | 未覆盖项，建议后续补测 |
+| P2-03/06/08/09/10/11/12/16/17/18/19/20/23/24/25 | 低 | 历史遗留加固/可维护性/体验建议 | 仍待排期，不阻塞交付 |
+
+### 19.8 第九轮结论
+
+**✅ 通过，准予放行。** 安装包与文档一致（98.1 MB / SHA256 匹配）、可复现重建（76.9s，哈希一致）；静默安装到临时目录成功，文件完整、开始菜单/桌面快捷方式与 HKCU 卸载项正确；已安装 exe 两阶段 smoke **141/141 + 阶段二通过**；静默卸载清理干净且保留 `%APPDATA%\MoDex` 用户数据；脚本 per-user、AppId 固定、无绝对路径、产物不入库。交付物：`release/MoDex-1.0.0-setup.exe`（另有便携版 `release/MoDex-1.0.0-win32-x64/MoDex.exe`）。
