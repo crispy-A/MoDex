@@ -141,6 +141,14 @@ async function runE2E({ win, cli, paths }) {
     assert('渲染层初始化完成（window.__qm.ready）', ready === true)
     step('等待渲染层就绪', { ready })
 
+    // 默认窗口尺寸：Codex 式 16:10（1280×800）；窗口尺寸持久化恢复在别处验证
+    const defaultBounds = win.getBounds()
+    assert(
+      '默认窗口尺寸 1280×800（16:10）',
+      defaultBounds.width === 1280 && defaultBounds.height === 800,
+      defaultBounds
+    )
+
     // 注入全局错误收集器
     await run(
       'inject-error-collector',

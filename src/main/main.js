@@ -314,7 +314,7 @@ function restoreWindowState(options) {
 function createWindow() {
   const options = restoreWindowState({
     width: 1280,
-    height: 820,
+    height: 800,
     minWidth: 900,
     minHeight: 600,
     show: false,
