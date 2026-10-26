@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' app: data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>MoDex</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div
+      id="app"
+      data-theme="light"
+      data-view="split"
+      data-preview-style="codex"
+      data-sidebar="visible"
+      data-has-doc="false"
+      data-has-root="false"
+    >
+      <!-- 单条导航栏：品牌 + 侧栏开关 + 应用菜单 | 视图 tabs + 主题 -->
+      <header id="toolbar">
+        <div class="tb-group tb-brand">
+          <span class="brand-mark" data-icon="brand" aria-hidden="true"></span>
+          <span class="brand-name">MoDex</span>
+        </div>
+        <button
+          class="tb-btn tb-icon-btn"
+          type="button"
+          data-action="toggle-sidebar"
+          title="显示/隐藏侧栏 (Ctrl+Shift+E)"
+          aria-label="切换侧栏"
+        >
+          <span class="icon" data-icon="sidebar"></span>
+        </button>
+        <div class="tb-group tb-menubar" role="group" aria-label="应用菜单">
+          <button
+            class="tb-btn app-menu-btn"
+            type="button"
+            data-app-menu="file"
+            aria-haspopup="menu"
+            aria-expanded="false"
+          >
+            文件
+          </button>
+          <button
+            class="tb-btn app-menu-btn"
+            type="button"
+            data-app-menu="edit"
+            aria-haspopup="menu"
+            aria-expanded="false"
+          >
+            编辑
+          </button>
+          <button
+            class="tb-btn app-menu-btn"
+            type="button"
+            data-app-menu="view"
+            aria-haspopup="menu"
+            aria-expanded="false"
+          >
+            视图
+          </button>
+          <button
+            class="tb-btn app-menu-btn"
+            type="button"
+            data-app-menu="help"
+            aria-haspopup="menu"
+            aria-expanded="false"
+          >
+            帮助
+          </button>
+        </div>
+        <div class="tb-spacer"></div>
+        <div class="tb-group" id="view-switch" role="group" aria-label="视图切换">
+          <button class="tb-btn seg-btn" type="button" data-action="view-edit" title="编辑视图 (Ctrl+1)">
+            编辑
+          </button>
+          <button class="tb-btn seg-btn" type="button" data-action="view-split" title="分栏视图 (Ctrl+2)">
+            分栏
+          </button>
+          <button
+            class="tb-btn seg-btn"
+            type="button"
+            data-action="view-preview"
+            title="预览视图 (Ctrl+3)"
+          >
+            预览
+          </button>
+        </div>
+        <button
+          class="tb-btn tb-icon-btn"
+          id="theme-toggle"
+          type="button"
+          data-action="theme-toggle"
+          title="切换主题 (Ctrl+Shift+T)"
+          aria-label="切换主题"
+        >
+          <span class="icon" id="theme-icon" data-icon="moon"></span>
+        </button>
+      </header>
+
+      <!-- 左侧多文件夹工作区（Codex 项目列表风格） -->
+      <aside id="sidebar">
+        <div id="sidebar-head">
+          <span id="sidebar-title">文件夹</span>
+          <div class="sidebar-actions">
+            <button type="button" data-action="open-folder" title="添加文件夹">＋</button>
+            <button type="button" data-action="refresh-tree" title="刷新全部">↻</button>
+          </div>
+        </div>
+        <div id="tree-scroll" hidden>
+          <ul id="tree" role="tree" aria-label="文件夹列表"></ul>
+        </div>
+        <div id="sidebar-empty">
+          尚未打开文件夹<br />
+          <button type="button" data-action="open-folder">添加文件夹</button>
+        </div>
+        <div id="sidebar-foot"><span id="sidebar-root"></span></div>
+      </aside>
+
+      <div id="sidebar-resizer" role="separator" aria-orientation="vertical" title="拖拽调整侧栏宽度"></div>
+
+      <!-- 主编辑区 -->
+      <main id="main">
+        <div id="doc-head">
+          <span id="doc-title">未命名.md</span>
+          <span id="doc-dir"></span>
+          <span id="doc-dirty" title="有未保存修改" hidden></span>
+        </div>
+        <div id="panes">
+          <section id="editor-pane">
+            <textarea
+              id="editor"
+              spellcheck="false"
+              wrap="soft"
+              aria-label="Markdown 编辑器"
+            ></textarea>
+          </section>
+          <div id="pane-resizer" role="separator" aria-orientation="vertical" title="拖拽调整分栏比例"></div>
+          <section id="preview-pane">
+            <article id="preview" class="markdown-body"></article>
+          </section>
+        </div>
+
+        <!-- 无文档时的欢迎页 -->
+        <div id="welcome">
+          <div class="welcome-inner">
+            <div class="welcome-hero">
+              <div class="welcome-mark" data-icon="brand" aria-hidden="true"></div>
+              <h1>MoDex</h1>
+              <p class="welcome-sub">轻量 · 专注的 Markdown 写作与预览</p>
+            </div>
+            <div class="welcome-actions">
+              <button class="welcome-btn primary" type="button" data-action="new-doc">
+                <span class="icon" data-icon="newDoc"></span><span>新建文档</span>
+              </button>
+              <button class="welcome-btn" type="button" data-action="open-file">
+                <span class="icon" data-icon="openFile"></span><span>打开文件</span>
+              </button>
+              <button class="welcome-btn" type="button" data-action="open-folder">
+                <span class="icon" data-icon="openFolder"></span><span>打开文件夹</span>
+              </button>
+            </div>
+            <div class="welcome-recent">
+              <div class="recent-col">
+                <div class="recent-head">
+                  <span>最近文件</span>
+                  <button
+                    class="link-btn"
+                    type="button"
+                    data-action="clear-recent"
+                    data-kind="file"
+                  >
+                    清空
+                  </button>
+                </div>
+                <ul id="recent-files" class="recent-list"></ul>
+              </div>
+              <div class="recent-col">
+                <div class="recent-head">
+                  <span>最近文件夹</span>
+                  <button
+                    class="link-btn"
+                    type="button"
+                    data-action="clear-recent"
+                    data-kind="folder"
+                  >
+                    清空
+                  </button>
+                </div>
+                <ul id="recent-folders" class="recent-list"></ul>
+              </div>
+            </div>
+            <div class="welcome-hints">
+              <span>Ctrl+N 新建</span>
+              <span>Ctrl+O 打开</span>
+              <span>Ctrl+S 保存</span>
+              <span>Ctrl+Shift+E 侧栏</span>
+              <span>Ctrl+Shift+T 主题</span>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- 查找栏 -->
+      <div id="findbar" hidden>
+        <span class="find-icon" data-icon="search" aria-hidden="true"></span>
+        <input id="find-input" type="text" placeholder="查找…" aria-label="查找" />
+        <span id="find-count">0/0</span>
+        <button type="button" data-find="prev" title="上一个 (Shift+Enter)" aria-label="上一个">
+          <span class="icon" data-icon="arrowUp"></span>
+        </button>
+        <button type="button" data-find="next" title="下一个 (Enter)" aria-label="下一个">
+          <span class="icon" data-icon="arrowDown"></span>
+        </button>
+        <button type="button" data-find="close" title="关闭 (Esc)" aria-label="关闭">
+          <span class="icon" data-icon="close"></span>
+        </button>
+      </div>
+
+      <!-- 状态栏 -->
+      <footer id="statusbar">
+        <span id="status-path">就绪</span>
+        <span id="status-spacer"></span>
+        <span id="status-position">行 1, 列 1</span>
+        <span id="status-words">0 字</span>
+        <span id="status-save">已保存</span>
+        <span id="status-mode">分栏</span>
+      </footer>
+
+      <div id="toasts" aria-live="polite"></div>
+      <ul id="context-menu" hidden></ul>
+      <ul id="app-menu" role="menu" aria-label="应用菜单" hidden></ul>
+      <ul id="app-submenu" role="menu" aria-label="预览样式" hidden></ul>
+    </div>
+
+    <script src="vendor/markdown-it.min.js"></script>
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

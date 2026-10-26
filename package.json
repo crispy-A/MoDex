@@ -1,0 +1,22 @@
+{
+  "name": "modex",
+  "productName": "MoDex",
+  "version": "1.0.0",
+  "description": "MoDex：轻量化 Markdown 编辑器桌面应用，支持编辑、预览、文件与文件夹管理",
+  "main": "src/main/main.js",
+  "author": "AQ",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "node scripts/start.mjs",
+    "test": "node --test \"tests/**/*.test.mjs\"",
+    "smoke": "node scripts/smoke.mjs",
+    "package": "node scripts/package.mjs"
+  },
+  "dependencies": {
+    "markdown-it": "^14.1.0"
+  },
+  "devDependencies": {
+    "electron": "40.10.2"
+  }
+}
