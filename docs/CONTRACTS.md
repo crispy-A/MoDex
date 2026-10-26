@@ -81,6 +81,10 @@ interface Settings {
   openFolders: string[]         // 已打开的文件夹（多根工作区，绝对路径、去重、最多 12，顺序=侧栏顺序）
   activeFolder: string | null   // 最近激活的文件夹根；必须在 openFolders 中或为 null
   previewStyle: 'codex' | 'github' | 'vue' | 'notion' | 'feishu' | 'tailwind' | 'serif'   // 预览样式，默认 codex
+  aiPanelMode: 'closed' | 'open' | 'rail'   // AI 面板状态，默认 closed
+  aiPanelWidth: number                       // 320–560，默认 360
+  aiModel: 'deepseek-flash' | 'deepseek-v4-pro'   // 默认 deepseek-flash
+  aiIncludeContext: boolean                  // 发送时附带当前文档，默认 false
 }
 
 window.api = {
@@ -132,6 +136,48 @@ window.api = {
   addRecent(kind: 'file' | 'folder', targetPath: string): Promise<void>
   clearRecent(kind: 'file' | 'folder' | 'all'): Promise<void>
 
+  // ---- AI 助手（DeepSeek Responses API；Key 与网络仅主进程） ----
+  ai: {
+    bootstrap(): Promise<AiBootstrap>
+    send(payload: {
+      requestId: string
+      model: 'deepseek-flash' | 'deepseek-v4-pro'
+      messages: Array<{ role: 'user' | 'assistant', content: string }>
+      context?: { fileName: string, content: string }   // 由主进程拼进 instructions 并截断 20k 字符
+    }): Promise<{ ok: true } | { ok: false, error: AiError }>
+    cancel(requestId: string): Promise<{ ok: true, cancelled: boolean }>
+    setKey(key: string): Promise<{ ok: true, hasKey: true, maskedKey: string } | { ok: false, error: AiError }>
+    clearKey(): Promise<{ ok: true, hasKey: false }>
+    testConnection(): Promise<{ ok: true, latencyMs: number } | { ok: false, error: AiError }>
+    listSessions(): Promise<{ ok: true, sessions: AiSessionSummary[] }>
+    getSession(id: string): Promise<{ ok: true, session: AiSession } | { ok: false, error: AiError }>
+    saveSession(session: AiSession): Promise<{ ok: true } | { ok: false, error: AiError }>
+    deleteSession(id: string): Promise<{ ok: true, removed: boolean }>
+    onEvent(cb: (payload: AiEvent) => void): () => void
+  }
+
+  interface AiBootstrap {
+    ok: true
+    provider: { id: 'deepseek', name: 'DeepSeek' }
+    models: Array<{ id: string, label: string, description: string, capabilities: string[] }>
+    defaultModel: string
+    settings: { model: string, panelMode: 'closed'|'open'|'rail', panelWidth: number, includeContext: boolean }
+    hasKey: boolean
+    maskedKey: string          // 形如 '••••••••abcd'；不含明文
+  }
+
+  interface AiError { code: string, message: string, retryable: boolean, status?: number, detail?: string }
+
+  type AiEvent =
+    | { requestId: string, type: 'started' }
+    | { requestId: string, type: 'text_delta', delta: string }
+    | { requestId: string, type: 'reasoning_delta', delta: string }
+    | { requestId: string, type: 'completed', usage: { input: number, output: number, total: number }, durationMs: number }
+    | { requestId: string, type: 'incomplete', usage: { input: number, output: number, total: number }, reason: string }
+    | { requestId: string, type: 'cancelled' }
+    | { requestId: string, type: 'failed', error: AiError }
+  // AiSession / AiSessionSummary 结构见 docs/AI-PANEL-SPEC.md §3.6
+
   // ---- 事件（返回取消订阅函数） ----
   onMenuAction(cb: (action: MenuAction) => void): () => void
   onTreeChanged(cb: (rootPath: string) => void): () => void
@@ -153,6 +199,7 @@ type MenuAction =
   | 'view:edit' | 'view:split' | 'view:preview'
   | 'view:toggle-sidebar' | 'view:theme-toggle'
   | 'view:zoom-in' | 'view:zoom-out' | 'view:zoom-reset'
+  | 'ai:toggle'
   | 'help:shortcuts' | 'help:about'
 ```
 

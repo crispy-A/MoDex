@@ -720,3 +720,65 @@
 
 - 无回归：菜单栏 **24/24**、设计审计 **23/23**、audit-main **100/100** 本轮复跑通过；工具栏仍 5 个 data-action。
 - **结论**：**✅ 通过（P1-02 关闭）**。两项阻塞缺陷（外部点击不关二级、Esc/重开防抖）均已修复且有真实鼠标事件与补充交互证据；预览样式选择功能整体可交付。最终交付物：`release/MoDex-1.0.0-win32-x64/MoDex.exe`。
+
+## 17. AI 写作助手（右侧面板 + DeepSeek Responses API）复验（task-18，**✅ 通过，准予放行**）
+
+- 复验时间：2026-10-26；依据：`docs/AI-PANEL-SPEC.md`、`docs/CONTRACTS.md` 的 `api.ai`、`docs/AI-PANEL-PROPOSAL.md`
+- 新增专项脚本：`artifacts/qa/audit-ai.mjs`（30 断言；内置本地 Responses API SSE mock，`--ai-base-url` 注入，覆盖流式/错误/停止/上下文/安全）
+- 复跑（串行，全部 exit 0）：
+  - `npm test` **86/86**；
+  - dev smoke 两阶段：**141/141 + 阶段二通过**（含 AI mock 断言）；
+  - 打包 exe 两阶段 smoke：**141/141 + 阶段二通过**；
+  - `resources/app/src` 与仓库 **23/23 SHA256 一致**；release 仅 `MoDex-1.0.0-win32-x64/`。
+
+### 17.1 AI 功能矩阵（30/30 通过）
+
+| 验证项 | 结果 | 证据 |
+| --- | --- | --- |
+| 面板三态 closed/open/rail、宽度、收起展开 | ✅ | AI1/AI3/AI4；`#app[data-ai-panel]`、`.
+#ai-panel[data-mode]` 同步；rail 40px 侧条可展开 |
+| 入口：AI 图标（data-ai-toggle 非 data-action）、`Ctrl+Shift+A`、视图菜单「AI 写作助手」 | ✅ | AI1/AI5/AI6；工具栏仍恰好 5 个 data-action |
+| Key 设置：保存后 hasKey/maskedKey（`••••••••7890`）、测试连接成功、清除二次确认入口 | ✅ | AI7；截图 `22/24`（掩码与安全说明） |
+| 流式回答 + usage 行 | ✅ | AI9：assistant done、正文含 Mock 回答、usage「输入/输出 tokens」 |
+| 模型切换 deepseek-flash ↔ deepseek-v4-pro 与请求体 model 一致 | ✅ | AI10：mock 收到 `model=deepseek-v4-pro`；重启后 label 恢复 V4 Pro |
+| 上下文开关：默认关闭；开启后请求 instructions 含 `<当前文档>`、回答提示「已参考当前文档」 | ✅ | AI11 |
+| 20k 上下文截断 | ✅ | AI12：传入 25000 字符 context，mock 收到上下文 X 字符数 ≤20000 |
+| 停止生成 | ✅ | AI13：慢速流中显示停止按钮，点击后消息 `data-status=cancelled`、按钮隐藏 |
+| 429 / 500 错误卡片 + 重试入口 | ✅ | AI14/AI15：「请求过于频繁」「服务暂时不可用」，重试按钮存在 |
+| 历史会话：保存/恢复/删除 | ✅ | AI17/AI18/AI19 |
+| 设置持久化（aiModel/aiPanelMode/aiPanelWidth/aiIncludeContext） | ✅ | AI20：saveSettings 返回合法值 |
+| 900×600 overlay 无横向溢出；深色主题 | ✅ | AI21 + 截图 `04-ai-overlay-900x600.png`、`05-ai-panel-dark.png` |
+| 重启恢复（同 user-data） | ✅ | AI29：面板 open、模型 V4 Pro、Key hasKey、历史保留 |
+
+### 17.2 安全专项（全部通过）
+
+| 检查项 | 结果 | 证据 |
+| --- | --- | --- |
+| 渲染层读不到明文 Key | ✅ | AI7/AI8：`api.ai.bootstrap` 仅 hasKey/maskedKey；DOM/body/localStorage 无明文；CDP 检查 `window.api.ai` 无 getKey |
+| Key 加密存储 | ✅ | AI23：`userData/ai/api-key.bin` 存在、内容不含明文、格式 `{version:1, ciphertext}`（safeStorage/DPAPI） |
+| state.json / sessions.json 不含 Key | ✅ | AI24：两文件均无明文；sessions.json 含会话消息 |
+| Key 不进仓库 | ✅ | AI25：源码/文档/测试全量扫描无测试 Key 明文 |
+| AI 回答 XSS 防护 | ✅ | AI16：mock 返回 `<img onerror>/<script>/javascript: 链接`，渲染后 `window.__xss` 未定义、无 script/onerror/危险 href，安全文本正常显示 |
+| `ai:*` IPC 来源校验 | ✅ | AI26：隐藏 BrowserWindow（真实 preload）调用 `api.ai.bootstrap` 返回 `EACCES` |
+| 渲染层 CSP 不变（AI 网络仅主进程） | ✅ | AI27：`script-src 'self'`、`connect-src 'self'`；主进程 `net.fetch` 发起 AI 请求 |
+| 运行期无未捕获错误 | ✅ | AI28 |
+
+### 17.3 无回归与打包产物
+
+- 无回归：菜单栏 **24/24**、设计审计 **23/23**、audit-main **100/100** 本轮复跑通过（脚本已按新菜单项「AI 写作助手（Ctrl+Shift+A）」、AI 浮层阴影、preload 新增 `ai` 暴露面更新预期并说明）。
+- 工具栏仍恰好 5 个 data-action；`#ai-toggle` 使用 `data-ai-toggle`，不占用 data-action。
+- 打包：`resources/app/src` **23/23 SHA256 一致**；打包 exe 两阶段 smoke **141/141 + 阶段二通过**；release 仅 `MoDex-1.0.0-win32-x64/`。
+- 视觉：审阅 `docs/screenshots/22-ai-panel-light.png`（右侧 dock、消息/usage/composer）、`24-ai-settings.png`（掩码 Key `••••••••7890` + safeStorage 安全说明）、e2e `23-ai-panel-dark.png`；1280×800 与 900×600 实测无溢出。
+
+### 17.4 缺陷分级
+
+| ID | 级别 | 内容 | 状态 |
+| --- | --- | --- | --- |
+| — | — | 本轮未发现 P0/P1；功能矩阵与安全专项全部通过 | — |
+| P2-23 | 低 | AI 面板为 v1 范围：仅「复制」不可插入到光标（SPEC 已明确 v1 不出插入按钮）；会话上限 200，无导出 | 记录（与 spec 一致，非缺陷） |
+| P2-24 | 低 | 历史会话删除无二次确认（普通非破坏性 UI 数据，若后续需要可加确认） | 记录，不阻塞交付 |
+| P2-03/06/08/09/10/11/12/16/17/18/19/20 | 低 | 历史遗留加固/可维护性/体验建议 | 仍待排期，不阻塞交付 |
+
+### 17.5 第七轮结论
+
+**✅ 通过，准予放行。** MoDex AI 写作助手 v1（右侧面板 + DeepSeek Responses API + 本地 safeStorage Key + 历史会话 + 上下文/截断/流式/停止/错误重试）功能矩阵 30/30 通过；安全专项（Key 不落渲染层、加密存储、XSS 过滤、IPC 来源校验、CSP 不变、Key 不进仓库）全部通过；86/86 单测、141/141+阶段二 dev 与打包 smoke、23/23 资源一致、无回归。最终交付物：`release/MoDex-1.0.0-win32-x64/MoDex.exe`。

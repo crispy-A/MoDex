@@ -1,6 +1,7 @@
-# MoDex AI 对话面板方案（v1，待确认）
+# MoDex AI 对话面板方案（v1，已实施）
 
-> 状态：**方案 + 前端示意图阶段**，本文件不包含实现代码。
+> 状态：**v1 已实施**（渲染层 UI + 主进程 AI 服务 + e2e/单测 + 截图）；实现契约以 `docs/AI-PANEL-SPEC.md`
+> 为准，验收见 `docs/QA-REPORT.md` §17。
 > 目标：在保持 MoDex 现有轻量、单色、键盘优先气质的前提下，加入一个可长期扩展的 AI 写作助手。
 > 第一版：窗口右侧 AI 对话面板 + DeepSeek Responses API + 两个 DeepSeek 模型（`deepseek-flash` / `deepseek-v4-pro`）。
 

@@ -99,6 +99,17 @@
         >
           <span class="icon" id="theme-icon" data-icon="moon"></span>
         </button>
+        <button
+          class="tb-btn tb-icon-btn"
+          id="ai-toggle"
+          type="button"
+          data-ai-toggle
+          aria-pressed="false"
+          title="AI 写作助手 (Ctrl+Shift+A)"
+          aria-label="AI 写作助手"
+        >
+          <span class="icon" data-icon="ai"></span>
+        </button>
       </header>
 
       <!-- 左侧多文件夹工作区（Codex 项目列表风格） -->
@@ -203,6 +214,235 @@
           </div>
         </div>
       </main>
+
+      <!-- 右侧 AI 写作助手：拖拽条 + 全高面板（closed / open / rail 三态） -->
+      <div
+        id="ai-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        title="拖拽调整 AI 面板宽度"
+        hidden
+      ></div>
+      <aside
+        id="ai-panel"
+        role="complementary"
+        aria-label="AI 写作助手"
+        data-mode="closed"
+        hidden
+      >
+        <header id="ai-header">
+          <div class="ai-head-left">
+            <span class="ai-mark" data-icon="ai" aria-hidden="true"></span>
+            <span id="ai-title">AI 写作助手</span>
+          </div>
+          <div class="ai-head-actions">
+            <button
+              class="ai-model-pill"
+              id="ai-model-button"
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              title="切换模型"
+            >
+              <span id="ai-model-label">DeepSeek Flash</span>
+              <span class="ai-pill-chevron" data-icon="chevronDown" aria-hidden="true"></span>
+            </button>
+            <button class="ai-icon-btn" id="ai-new-chat" type="button" title="新对话" aria-label="新对话">
+              <span data-icon="plus"></span>
+            </button>
+            <button class="ai-icon-btn" id="ai-history" type="button" title="历史对话" aria-label="历史对话">
+              <span data-icon="clock"></span>
+            </button>
+            <button class="ai-icon-btn" id="ai-settings-open" type="button" title="AI 设置" aria-label="AI 设置">
+              <span data-icon="settings"></span>
+            </button>
+            <button class="ai-icon-btn" id="ai-collapse" type="button" title="收起为侧边条" aria-label="收起 AI 面板">
+              <span data-icon="chevron" class="ai-collapse-chevron"></span>
+            </button>
+          </div>
+        </header>
+
+        <div id="ai-model-menu" class="ai-popover" role="menu" aria-label="选择模型" hidden></div>
+        <div id="ai-history-popover" class="ai-popover ai-history-popover" role="dialog" aria-label="历史对话" hidden></div>
+
+        <div class="ai-body">
+          <div id="ai-context-bar">
+            <button
+              id="ai-context-toggle"
+              class="ai-context-toggle"
+              type="button"
+              data-checked="false"
+              aria-pressed="false"
+              title="是否把当前文档发送给 AI"
+            >
+              <span class="ai-context-check" data-icon="check" aria-hidden="true"></span>
+              <span id="ai-context-label">未打开文档</span>
+            </button>
+            <span id="ai-context-meta" class="ai-context-meta"></span>
+          </div>
+
+          <div id="ai-messages" role="log" aria-live="polite" aria-label="AI 对话消息">
+            <div id="ai-welcome">
+              <div class="ai-welcome-hero">
+                <span class="ai-welcome-mark" data-icon="ai" aria-hidden="true"></span>
+                <h2>开始和 AI 一起写作</h2>
+                <p>总结、润色、续写或生成大纲。AI 结果仅供参考，重要内容请核对原文。</p>
+              </div>
+              <div class="ai-quick-list">
+                <button class="ai-quick" type="button" data-quick-prompt="summary">
+                  <span class="ai-quick-icon" data-icon="fileMd" aria-hidden="true"></span>
+                  <span class="ai-quick-text">
+                    <span class="ai-quick-title">总结当前文档</span>
+                    <span class="ai-quick-sub">提炼要点、结论与待办</span>
+                  </span>
+                  <span class="ai-quick-arrow" data-icon="chevron" aria-hidden="true"></span>
+                </button>
+                <button class="ai-quick" type="button" data-quick-prompt="outline">
+                  <span class="ai-quick-icon" data-icon="list" aria-hidden="true"></span>
+                  <span class="ai-quick-text">
+                    <span class="ai-quick-title">生成文档大纲</span>
+                    <span class="ai-quick-sub">根据现有内容补全结构</span>
+                  </span>
+                  <span class="ai-quick-arrow" data-icon="chevron" aria-hidden="true"></span>
+                </button>
+                <button class="ai-quick" type="button" data-quick-prompt="polish">
+                  <span class="ai-quick-icon" data-icon="rename" aria-hidden="true"></span>
+                  <span class="ai-quick-text">
+                    <span class="ai-quick-title">润色选中内容</span>
+                    <span class="ai-quick-sub" data-quick-polish-sub>先在编辑器中选中文字</span>
+                  </span>
+                  <span class="ai-quick-arrow" data-icon="chevron" aria-hidden="true"></span>
+                </button>
+              </div>
+              <div id="ai-session-list-mini" class="ai-session-mini" hidden></div>
+              <p id="ai-welcome-status" class="ai-welcome-status" hidden></p>
+            </div>
+          </div>
+
+          <div class="ai-composer-wrap">
+            <div class="ai-composer-box">
+              <textarea
+                id="ai-composer"
+                rows="2"
+                spellcheck="false"
+                aria-label="向 AI 提问"
+                placeholder="向 AI 提问，或让它改写当前文档…"
+              ></textarea>
+              <div class="ai-composer-tools">
+                <div class="ai-composer-tools-left">
+                  <button
+                    class="ai-tool-btn"
+                    id="ai-context-insert"
+                    type="button"
+                    title="引用当前文档"
+                    aria-label="引用当前文档"
+                  >
+                    <span data-icon="fileMd"></span>
+                  </button>
+                </div>
+                <div class="ai-composer-tools-right">
+                  <button class="ai-stop-btn" id="ai-stop" type="button" title="停止生成" hidden>
+                    <span data-icon="stop" aria-hidden="true"></span>
+                    <span>停止生成</span>
+                  </button>
+                  <button class="ai-send-btn" id="ai-send" type="button" title="发送 (Enter)" aria-label="发送">
+                    <span data-icon="arrowUp"></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="ai-composer-meta">
+              <span id="ai-hint" class="ai-hint">Enter 发送 · Shift+Enter 换行</span>
+              <span id="ai-usage-hint" class="ai-usage-hint"></span>
+            </div>
+          </div>
+        </div>
+
+        <div id="ai-rail">
+          <span class="ai-rail-mark" data-icon="ai" aria-hidden="true"></span>
+          <button class="ai-rail-btn" id="ai-rail-new-chat" type="button" title="新对话" aria-label="新对话">
+            <span data-icon="plus"></span>
+          </button>
+          <button class="ai-rail-btn" id="ai-rail-history" type="button" title="历史对话" aria-label="历史对话">
+            <span data-icon="clock"></span>
+          </button>
+          <span class="ai-rail-spacer"></span>
+          <button class="ai-rail-btn" id="ai-expand" type="button" title="展开 AI 面板" aria-label="展开 AI 面板">
+            <span data-icon="chevron" class="ai-expand-chevron"></span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- AI 设置弹窗 -->
+      <div id="ai-settings" class="ai-modal-backdrop" hidden>
+        <div class="ai-modal" role="dialog" aria-modal="true" aria-labelledby="ai-settings-title">
+          <header class="ai-modal-head">
+            <div>
+              <h2 id="ai-settings-title">AI 设置</h2>
+              <p>配置 AI 助手使用的模型与密钥，仅保存在本机。</p>
+            </div>
+            <button class="ai-icon-btn" id="ai-settings-close" type="button" title="关闭" aria-label="关闭 AI 设置">
+              <span data-icon="close"></span>
+            </button>
+          </header>
+
+          <div class="ai-settings-form">
+            <div class="ai-field">
+              <div class="ai-field-label-row">
+                <label>供应商</label>
+                <span class="ai-field-tag">Responses API</span>
+              </div>
+              <div class="ai-static-field">
+                <span>DeepSeek</span>
+                <span class="ai-static-note">当前版本固定，接口层预留其它供应商</span>
+              </div>
+            </div>
+
+            <div class="ai-field">
+              <label for="ai-key-input">API Key</label>
+              <div class="ai-input-wrap">
+                <input
+                  id="ai-key-input"
+                  type="password"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="尚未配置 API Key"
+                />
+              </div>
+              <p class="ai-field-hint">在 DeepSeek 控制台创建；保存时会在本机发起一次轻量连接验证。</p>
+            </div>
+
+            <div class="ai-field">
+              <label for="ai-model-select">默认模型</label>
+              <select id="ai-model-select" class="ai-select">
+                <option value="deepseek-flash">DeepSeek Flash</option>
+                <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+              </select>
+            </div>
+
+            <div class="ai-field ai-test-field">
+              <div class="ai-test-left">
+                <label>连接测试</label>
+                <span id="ai-connection-status">未测试</span>
+              </div>
+              <button class="ai-btn ai-btn-ghost" id="ai-test-connection" type="button">测试连接</button>
+            </div>
+
+            <div class="ai-security-note">
+              <span class="ai-security-icon" data-icon="alert" aria-hidden="true"></span>
+              <p>API Key 使用系统密钥环（Electron safeStorage）加密后保存在本机，不写入文档、不随文件同步，也不会提交到仓库。</p>
+            </div>
+
+            <p id="ai-settings-status" class="ai-settings-status" hidden></p>
+          </div>
+
+          <footer class="ai-modal-foot">
+            <button class="ai-btn ai-btn-danger" id="ai-key-clear" type="button" hidden>清除密钥</button>
+            <span class="ai-foot-spacer"></span>
+            <button class="ai-btn ai-btn-primary" id="ai-key-save" type="button">保存并验证</button>
+          </footer>
+        </div>
+      </div>
 
       <!-- 查找栏 -->
       <div id="findbar" hidden>

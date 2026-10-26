@@ -9,6 +9,8 @@
 > 关闭流程不再询问、`confirmUnsaved` 仅用于删除当前文件）。
 > **预览样式选择（7 套内置样式）的最新约定以 `docs/PREVIEW-STYLE-SPEC.md` 为准**（Settings.previewStyle、
 > 视图 → 预览样式 二级菜单、`#app[data-preview-style]`、`__qm.setPreviewStyle`）。
+> **AI 对话面板（右侧 dock）的最新约定以 `docs/AI-PANEL-SPEC.md` 为准**（`window.api.ai`、面板 DOM id、
+> 流式事件、上下文、历史会话、设置弹窗；Key 只在主进程）。
 
 渲染层是纯前端（ES Modules + 原生 DOM），**不使用任何构建工具、不引入额外 npm 依赖**。
 唯一第三方库是 `src/renderer/vendor/markdown-it.min.js`（UMD，暴露全局 `window.markdownit`），已在仓库中。
@@ -213,7 +215,21 @@ window.__qm = {
 ```
 `app.js` 末尾设置 `window.__qm`，并在 `ready` resolve 之后再触发 `document.documentElement.dataset.ready='1'`。
 
-## 6. 健壮性要求
+## 6. AI 对话面板（v1）
+
+完整契约见 `docs/AI-PANEL-SPEC.md`，这里只列渲染层要点：
+
+- 入口：工具栏 `#ai-toggle`（`data-ai-toggle`，不计入 data-action）、`Ctrl+Shift+A`、视图菜单「AI 写作助手」。
+- 三态：`closed` / `open`（360px dock，≥1180px）/ `rail`（40px 侧条）；<1180px 为覆盖预览区的 overlay。
+- 面板结构、必需 id/data 见 spec §4.1；消息状态 `data-status="streaming|done|error|cancelled"`。
+- 流式渲染：`api.ai.onEvent` → `text_delta` 追加渲染（节流）、`reasoning_delta` 折叠区、`completed` 写 usage、
+  `failed` 错误卡片（带重试）、`cancelled` 标记停止；发送时 `requestId` 用 `crypto.randomUUID()`。
+- 上下文：`aiIncludeContext` 默认 false；快捷提问 summary/outline 自动携带当前文档、polish 使用选区；
+  文档内容通过 `ai:send({ context: { fileName, content } })` 交给主进程，渲染层不直接调网络。
+- 历史：主进程持久化；渲染层每轮结束保存，新对话/历史恢复/删除走 `api.ai.*`。
+- 安全：`api.ai` 不返回明文 Key；只显示 maskedKey；assistant 内容一律 `renderMarkdown`（禁原始 HTML）。
+
+## 7. 健壮性要求
 
 - 所有 `window.api` 调用 try/catch；`ok:false` 时 `toast(res.error, 'error')`，不要让 Promise 未捕获。
 - 初始化异常时在页面显示错误块（含 message），不得白屏。

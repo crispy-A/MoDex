@@ -254,3 +254,20 @@
   7 套×浅/深两条分支，默认 codex 不产生覆盖（与旧版视觉一致）。
 - 900×600 下二级面板不溢出窗口（必要时向上翻转）；Esc / 点击外部 / 切换其它菜单时两级一起关闭。
 - 本轮验收结果：`npm test` 48/48、`npm run smoke` 123/123、打包 exe smoke 123/123；独立 QA 预览样式专项 20/20（含真实鼠标外部点击 PS11、Esc 后立即重开、父菜单内点击不误关）、无回归 24/24 + 100/100 + 23/23，P0=0、P1=0（详见 `docs/QA-REPORT.md` §16/§16.5）。
+
+## 11. 本轮扩展：AI 写作助手（右侧 dock）
+
+> 完整契约见 `docs/AI-PANEL-SPEC.md`；设计稿见 `docs/mockups/ai-panel-*.png`。
+
+- 布局：窗口 ≥1180px 时全高右栏（默认 360px，320–560 可拖拽，6px 拖拽条 + 1px 发丝线）；
+  <1180px 覆盖预览区（`#app[data-ai-overlay="true"]`）；收起为 40px rail（图标 + 新对话 + 历史 + 展开）。
+- Header 40px 与工具栏同高：AI 图标 + 「AI 写作助手」+ 模型 pill（`DeepSeek Flash ▾` / 模型菜单）+
+  新对话 / 历史 / 设置 / 收起；图标 22px、`--faint`，hover 提升。
+- 消息区：用户消息右对齐浅气泡；AI 消息左对齐、无气泡，正文用独立 `.ai-markdown`（13px/1.7，
+  不受「预览样式」影响），代码块等宽 12px + 复制；底部 11px 灰字 usage；思考过程折叠为「已深度思考 12s ›」。
+- 上下文栏：`当前文档 · 示例.md` chip + `约 247 字`；开关选中时 `--accent`，未打开文档时禁用。
+- 输入区：textarea 自动增高、Enter 发送 / Shift+Enter 换行；生成中发送变「停止生成」；错误卡片左缘 danger + 重试。
+- 设置弹窗：440px 居中卡片、遮罩、API Key 密码框（placeholder 为 maskedKey）、默认模型下拉、测试连接状态、
+  safeStorage 安全说明；保存并验证成功 toast「AI 已就绪」。
+- 默认关闭时应用与旧版视觉完全一致（工具栏仅多一个 22px AI 图标，不计入 data-action）。
+- 验收：`npm test` 86/86、`npm run smoke` 141/141、打包 exe smoke、QA §17（独立复验；见 QA 报告）。

@@ -24,6 +24,7 @@ import { icons } from './icons.js'
 import { initEditor } from './editor.js'
 import { initPreview } from './preview.js'
 import { initTree } from './tree.js'
+import { initAiPanel } from './ai-panel.js'
 
 const api = typeof window !== 'undefined' ? window.api : undefined
 
@@ -39,6 +40,10 @@ const DEFAULT_SETTINGS = {
   lastFile: null,
   openFolders: [],
   activeFolder: null,
+  aiPanelMode: 'closed',
+  aiPanelWidth: 360,
+  aiModel: 'deepseek-flash',
+  aiIncludeContext: false,
 }
 const MAX_ROOTS = 12
 const VIEW_NAMES = { edit: '编辑', split: '分栏', preview: '预览' }
@@ -73,6 +78,10 @@ const PREVIEW_STYLE_OPTIONS = [
   { id: 'serif', label: '报刊衬线风' },
 ]
 const PREVIEW_STYLE_IDS = new Set(PREVIEW_STYLE_OPTIONS.map((option) => option.id))
+
+/** AI 模型 id（与主进程 provider-registry 保持一致，仅用于渲染层清洗/兜底） */
+const AI_MODEL_IDS = new Set(['deepseek-flash', 'deepseek-v4-pro'])
+const AI_PANEL_MODES = new Set(['closed', 'open', 'rail'])
 
 /**
  * 应用菜单定义（单条导航栏，内容与原生菜单一一对应，不新增功能）。
@@ -126,6 +135,7 @@ const APP_MENU_DEFS = [
       { label: '重置字号', hint: 'Ctrl+0', action: 'view:zoom-reset' },
       { separator: true },
       { label: '预览样式', hasSubmenu: true, menuKey: 'preview-style' },
+      { label: 'AI 写作助手', hint: 'Ctrl+Shift+A', action: 'ai:toggle' },
       { label: '全屏', command: 'togglefullscreen' },
       { label: '开发者工具', hint: 'F12', command: 'toggleDevTools' },
     ],
@@ -164,6 +174,7 @@ let tree = null
 let toast = null
 let menus = null
 let appMenus = null
+let aiPanel = null
 let appMenuOpenKind = null
 let lastClosedAppMenu = { kind: '', at: 0 }
 let appSubmenuOpen = false
@@ -357,6 +368,10 @@ function applySettings() {
   settings.sidebarWidth = Math.round(clamp(settings.sidebarWidth, 180, 520))
   settings.fontSize = normalizeFontSize(settings.fontSize)
   if (!PREVIEW_STYLE_IDS.has(settings.previewStyle)) settings.previewStyle = 'codex'
+  if (!AI_PANEL_MODES.has(settings.aiPanelMode)) settings.aiPanelMode = 'closed'
+  settings.aiPanelWidth = Math.round(clamp(settings.aiPanelWidth, 320, 560))
+  if (!AI_MODEL_IDS.has(settings.aiModel)) settings.aiModel = 'deepseek-flash'
+  settings.aiIncludeContext = Boolean(settings.aiIncludeContext)
 
   // 多根工作区：清洗已保存的文件夹列表与当前激活根
   settings.openFolders = normalizeOpenFolders(settings.openFolders)
@@ -433,6 +448,7 @@ function reportDirty(dirty) {
 
 function updateDocUi() {
   if (!appEl) return
+  scheduleAiContextRefresh()
   const doc = state.doc
   appEl.dataset.hasDoc = doc ? 'true' : 'false'
   appEl.dataset.dirty = doc && doc.dirty ? 'true' : 'false'
@@ -497,6 +513,11 @@ const scheduleAnalysis = debounce(() => {
   renderPreview()
 }, 120)
 
+/** 文档 / 选区变化时，节流刷新 AI 面板的上下文 chip 与快捷提问可用性 */
+const scheduleAiContextRefresh = debounce(() => {
+  aiPanel?.refreshContext?.()
+}, 120)
+
 const scheduleAutoSave = debounce(async () => {
   if (!state.settings.autoSave || !state.doc || !state.doc.dirty) return
   if (!state.doc.path) {
@@ -553,6 +574,22 @@ function resetToWelcome() {
   renderPreview()
   tree?.setCurrentFile(null)
   updateDocUi()
+}
+
+/** 提供给 AI 面板的当前文档上下文（文件名 / 全文 / 选区 / 字数） */
+function getAiDocumentContext() {
+  const textarea = $('#editor')
+  const selectionText =
+    state.doc && textarea
+      ? textarea.value.slice(textarea.selectionStart, textarea.selectionEnd)
+      : ''
+  return {
+    fileName: state.doc?.fileName || '',
+    path: state.doc?.path || null,
+    content: state.doc?.content || '',
+    selectionText,
+    wordCount: state.doc ? state.wordCount : 0,
+  }
 }
 
 async function newDocument() {
@@ -1286,6 +1323,11 @@ function onGlobalKeydown(event) {
       }
       return
     }
+    if (event.shiftKey && key === 'a') {
+      event.preventDefault()
+      void dispatch('ai:toggle')
+      return
+    }
     if (key === 's' && !event.shiftKey) {
       event.preventDefault()
       void dispatch('file:save')
@@ -1313,6 +1355,11 @@ function onGlobalKeydown(event) {
     if (key === 'e') {
       event.preventDefault()
       void dispatch('view:toggle-sidebar')
+      return
+    }
+    if (key === 'a') {
+      event.preventDefault()
+      void dispatch('ai:toggle')
       return
     }
     return
@@ -1386,6 +1433,7 @@ const ACTION_HANDLERS = {
   'tree:new-file': () => tree?.startCreate('file'),
   'tree:new-folder': () => tree?.startCreate('folder'),
   'tree:refresh': () => tree?.refresh(),
+  'ai:toggle': () => aiPanel?.toggle(),
 }
 
 // ---------------------------------------------------------------------------
@@ -1483,6 +1531,10 @@ function wireEvents() {
   document.addEventListener('click', onDocumentClick)
   window.addEventListener('keydown', onGlobalKeydown)
   $('#app-submenu')?.addEventListener('click', onAppSubmenuClick)
+  const editorInput = $('#editor')
+  for (const eventName of ['select', 'keyup', 'mouseup', 'focus']) {
+    editorInput?.addEventListener(eventName, () => scheduleAiContextRefresh())
+  }
   bindResizers()
   bindApiEvents()
   const media = window.matchMedia?.('(prefers-color-scheme: dark)')
@@ -1580,6 +1632,13 @@ async function boot() {
   renderRecent()
   updateDocUi()
   reportDirty(false)
+  aiPanel = initAiPanel({
+    api,
+    toast,
+    persistSettings,
+    getSettings: () => state.settings,
+    getDocumentContext: getAiDocumentContext,
+  })
   const initial = info?.initial || {}
   // 多根恢复：已保存的 openFolders 优先，其次命令行 initial.root
   const restoredRoots = normalizeOpenFolders(state.settings.openFolders)
@@ -1589,6 +1648,7 @@ async function boot() {
     await openRoot(initial.root)
   }
   if (initial.file) await loadFilePath(initial.file, { force: true })
+  aiPanel?.refreshContext?.()
   // 说明：settings.lastFolder 只用于填充最近列表与默认保存目录，不单独自动打开
 }
 
@@ -1629,6 +1689,10 @@ if (typeof window !== 'undefined') {
         sidebarVisible: state.sidebarVisible,
         wordCount: state.wordCount,
         treeFileCount: tree?.getFileCount?.() ?? 0,
+        aiPanelMode: aiPanel?.getMode?.() ?? state.settings.aiPanelMode,
+        aiPanelWidth: state.settings.aiPanelWidth,
+        aiModel: state.settings.aiModel,
+        aiIncludeContext: state.settings.aiIncludeContext,
       }
     },
     async openPath(path) {

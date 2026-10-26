@@ -98,6 +98,25 @@ export const icons = {
   alert: svg('<path d="M8 2L14.2 13H1.8z"/><path d="M8 6.2v3.2"/><path d="M8 11.6v.1"/>'),
   clock: svg('<circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2.2 1.4"/>'),
   dot: svg('<circle cx="8" cy="8" r="3" fill="currentColor" stroke="none"/>'),
+
+  // AI 写作助手
+  ai: svg(
+    '<path d="M8 1.8l1.5 4.2 4.2 1.5-4.2 1.5L8 13.2 6.5 9 2.3 7.5 6.5 6z"/>' +
+      '<path d="M12.6 11.2l.45 1.25 1.25.45-1.25.45-.45 1.25-.45-1.25-1.25-.45 1.25-.45z"/>'
+  ),
+  plus: svg('<path d="M8 3v10M3 8h10"/>'),
+  settings: svg(
+    '<circle cx="8" cy="8" r="2.2"/>' +
+      '<path d="M8 1.8v1.7M8 12.5v1.7M1.8 8h1.7M12.5 8h1.7M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M12.4 3.6l-1.2 1.2M4.8 11.2l-1.2 1.2"/>'
+  ),
+  stop: svg('<rect x="4.6" y="4.6" width="6.8" height="6.8" rx="1.2" fill="currentColor" stroke="none"/>'),
+  list: svg(
+    '<path d="M5.5 4.2h9M5.5 8h9M5.5 11.8h9"/>' +
+      '<circle cx="2.6" cy="4.2" r="0.9" fill="currentColor" stroke="none"/>' +
+      '<circle cx="2.6" cy="8" r="0.9" fill="currentColor" stroke="none"/>' +
+      '<circle cx="2.6" cy="11.8" r="0.9" fill="currentColor" stroke="none"/>'
+  ),
+  chevronDown: svg('<path d="M3.5 6L8 10.5 12.5 6"/>'),
 }
 
 export default icons

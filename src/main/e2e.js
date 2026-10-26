@@ -9,6 +9,7 @@
 const fs = require('node:fs')
 const fsp = fs.promises
 const path = require('node:path')
+const http = require('node:http')
 const { Menu } = require('electron')
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -241,20 +242,32 @@ async function runE2E({ win, cli, paths }) {
          const dirItem = items.find((li) => (li.querySelector('.tree-label') || {}).textContent === '子目录');
          if (!dirItem) return { found: false };
          (dirItem.querySelector('.tree-row') || dirItem).click();
-         await new Promise((resolve) => setTimeout(resolve, 700));
+         const findNested = () =>
+           [...document.querySelectorAll('#tree li.tree-item[data-type="file"]')].find(
+             (li) => (li.querySelector('.tree-label') || {}).textContent === '笔记.md'
+           );
+         let nested = null;
+         const expandStarted = Date.now();
+         while (Date.now() - expandStarted < 6000) {
+           await new Promise((resolve) => setTimeout(resolve, 150));
+           nested = findNested();
+           if (nested) break;
+         }
+         if (nested) (nested.querySelector('.tree-row') || nested).click();
+         let openedPath = window.__qm.getState().filePath;
+         const openStarted = Date.now();
+         while (Date.now() - openStarted < 8000 && !/笔记\.md$/.test(String(openedPath || ''))) {
+           await new Promise((resolve) => setTimeout(resolve, 150));
+           openedPath = window.__qm.getState().filePath;
+         }
          const expanded = [...document.querySelectorAll('#tree li.tree-item[data-type="dir"]')].find(
            (li) => (li.querySelector('.tree-label') || {}).textContent === '子目录'
          );
-         const nested = [...document.querySelectorAll('#tree li.tree-item[data-type="file"]')].find(
-           (li) => (li.querySelector('.tree-label') || {}).textContent === '笔记.md'
-         );
-         if (nested) (nested.querySelector('.tree-row') || nested).click();
-         await new Promise((resolve) => setTimeout(resolve, 600));
          return {
            found: true,
            expanded: expanded ? expanded.dataset.expanded === 'true' : false,
            nestedVisible: Boolean(nested),
-           openedPath: window.__qm.getState().filePath,
+           openedPath,
          }`
       )
       assert('文件树展开子目录', expandTest && expandTest.expanded === true, expandTest)
@@ -1112,6 +1125,420 @@ async function runE2E({ win, cli, paths }) {
           await delay(500)
         }
       }
+    }
+
+    // 9.6 AI 对话面板（mock Responses 服务，不依赖真实 Key）
+    if (cli.aiBaseUrl) {
+      const waitFor = async (label, script, timeoutMs = 15000, interval = 200) => {
+        const startedAt = Date.now()
+        let last = null
+        while (Date.now() - startedAt < timeoutMs) {
+          last = await run(`wait:${label}`, script)
+          if (last) return last
+          await delay(interval)
+        }
+        return last
+      }
+      const readMockLastRequest = () =>
+        new Promise((resolve) => {
+          try {
+            const request = http.get(`${cli.aiBaseUrl}/__last-request`, (response) => {
+              let data = ''
+              response.on('data', (chunk) => {
+                data += chunk
+              })
+              response.on('end', () => {
+                try {
+                  resolve(JSON.parse(data))
+                } catch {
+                  resolve(null)
+                }
+              })
+            })
+            request.on('error', () => resolve(null))
+            request.setTimeout(3000, () => {
+              request.destroy()
+              resolve(null)
+            })
+          } catch {
+            resolve(null)
+          }
+        })
+
+      const aiBootstrap = await run(
+        'ai-bootstrap',
+        `return await window.api.ai.bootstrap()`
+      )
+      assert(
+        'AI bootstrap：DeepSeek + 2 个模型 + 未配置 Key',
+        aiBootstrap &&
+          aiBootstrap.ok === true &&
+          aiBootstrap.provider.id === 'deepseek' &&
+          aiBootstrap.models.length === 2 &&
+          aiBootstrap.hasKey === false,
+        aiBootstrap
+      )
+
+      const aiOpen = await run(
+        'ai-open',
+        `document.getElementById('ai-toggle').click();
+         await new Promise((resolve) => setTimeout(resolve, 400));
+         const panel = document.getElementById('ai-panel');
+         return {
+           visible: !!panel && !panel.hidden,
+           mode: panel && panel.dataset.mode,
+           appMode: document.getElementById('app').dataset.aiPanel,
+         }`
+      )
+      assert(
+        'AI 面板可打开（默认 right dock）',
+        aiOpen && aiOpen.visible === true && aiOpen.mode === 'open',
+        aiOpen
+      )
+
+      const aiClose = await run(
+        'ai-close',
+        `document.getElementById('ai-toggle').click();
+         await new Promise((resolve) => setTimeout(resolve, 300));
+         const panel = document.getElementById('ai-panel');
+         return { hidden: !!panel && panel.hidden }`
+      )
+      assert('再次点击 AI 按钮关闭面板', aiClose && aiClose.hidden === true, aiClose)
+
+      const aiSettingsOpen = await run(
+        'ai-settings-open',
+        `document.getElementById('ai-toggle').click();
+         await new Promise((resolve) => setTimeout(resolve, 250));
+         document.getElementById('ai-settings-open').click();
+         await new Promise((resolve) => setTimeout(resolve, 300));
+         return { open: !document.getElementById('ai-settings').hidden }`
+      )
+      assert('AI 设置弹窗可打开', aiSettingsOpen && aiSettingsOpen.open === true, aiSettingsOpen)
+
+      const aiKeySaved = await run(
+        'ai-key-save',
+        `const input = document.getElementById('ai-key-input');
+         input.value = 'sk-test-1234567890';
+         input.dispatchEvent(new Event('input', { bubbles: true }));
+         document.getElementById('ai-key-save').click();
+         const startedAt = Date.now();
+         let state = null;
+         while (Date.now() - startedAt < 12000) {
+           await new Promise((resolve) => setTimeout(resolve, 250));
+           const bootstrap = await window.api.ai.bootstrap();
+           const status = document.getElementById('ai-connection-status');
+           state = {
+             hasKey: bootstrap && bootstrap.hasKey,
+             maskedKey: bootstrap && bootstrap.maskedKey,
+             statusText: status ? status.textContent : '',
+             settingsHidden: document.getElementById('ai-settings').hidden,
+           };
+           if (state.hasKey && (state.settingsHidden || /成功|ms|毫秒/.test(state.statusText))) break;
+         }
+         return state`
+      )
+      assert(
+        '保存 API Key 并验证连接成功（masked）',
+        aiKeySaved && aiKeySaved.hasKey === true && /7890$/.test(aiKeySaved.maskedKey || ''),
+        aiKeySaved
+      )
+      await run(
+        'ai-settings-close',
+        `const close = document.getElementById('ai-settings-close');
+         if (!document.getElementById('ai-settings').hidden && close) close.click();
+         await new Promise((resolve) => setTimeout(resolve, 250));
+         return true`
+      )
+
+      const sendAndWait = async (label, text, timeoutMs = 15000) => {
+        await run(
+          `ai-send-${label}`,
+          `const composer = document.getElementById('ai-composer');
+           composer.value = ${JSON.stringify(text)};
+           composer.dispatchEvent(new Event('input', { bubbles: true }));
+           document.getElementById('ai-send').click();
+           return true`
+        )
+        return waitFor(
+          `ai-done-${label}`,
+          `const articles = [...document.querySelectorAll('#ai-messages article.ai-msg[data-role="assistant"]')];
+           const last = articles[articles.length - 1];
+           if (!last) return null;
+           const status = last.dataset.status;
+           if (status === 'streaming') return null;
+           return {
+             status,
+             text: (last.querySelector('.ai-msg-body') || {}).textContent || '',
+             usage: (last.querySelector('.ai-msg-usage') || {}).textContent || '',
+             errorText: last.textContent || '',
+           }`,
+          timeoutMs
+        )
+      }
+
+      const basicReply = await sendAndWait('basic', '你好')
+      assert(
+        '发送消息并收到 mock 流式回答',
+        basicReply && basicReply.status === 'done' && basicReply.text.includes('写作建议'),
+        basicReply && { status: basicReply.status, text: basicReply.text.slice(0, 120) }
+      )
+      assert('回答展示 token 用量', basicReply && /\d+/.test(basicReply.usage), basicReply && basicReply.usage)
+
+      const modelSwitch = await run(
+        'ai-model-switch',
+        `document.getElementById('ai-model-button').click();
+         await new Promise((resolve) => setTimeout(resolve, 250));
+         const option = document.querySelector('#ai-model-menu li[data-model-id="deepseek-v4-pro"]');
+         if (option) (option.querySelector('button') || option).click();
+         await new Promise((resolve) => setTimeout(resolve, 300));
+         return {
+           label: document.getElementById('ai-model-button').textContent,
+           selected: document.getElementById('app').dataset.aiModel || null,
+         }`
+      )
+      assert(
+        '模型菜单可切换到 deepseek-v4-pro',
+        modelSwitch && /V4 Pro/i.test(modelSwitch.label || ''),
+        modelSwitch
+      )
+
+      const v4Reply = await sendAndWait('v4', '测试模型')
+      const lastRequestAfterV4 = await readMockLastRequest()
+      assert(
+        'v4-pro 请求生效并回显模型',
+        v4Reply && v4Reply.status === 'done' && /deepseek-v4-pro/i.test(v4Reply.text),
+        v4Reply && { status: v4Reply.status, text: v4Reply.text.slice(0, 160) }
+      )
+      assert(
+        'mock 服务收到 deepseek-v4-pro 请求',
+        lastRequestAfterV4 && lastRequestAfterV4.model === 'deepseek-v4-pro',
+        lastRequestAfterV4 && { model: lastRequestAfterV4.model }
+      )
+
+      await run(
+        'ai-quick-summary',
+        `const quick = document.querySelector('[data-quick-prompt="summary"]');
+         if (quick) quick.click();
+         return true`
+      )
+      const summaryDone = await waitFor(
+        'ai-done-summary',
+        `const articles = [...document.querySelectorAll('#ai-messages article.ai-msg[data-role="assistant"]')];
+         const last = articles[articles.length - 1];
+         if (!last || last.dataset.status === 'streaming') return null;
+         return { status: last.dataset.status, text: last.textContent || '' }`
+      )
+      const lastRequestAfterSummary = await readMockLastRequest()
+      assert(
+        '快捷提问「总结当前文档」自动附带文档上下文',
+        summaryDone &&
+          summaryDone.status === 'done' &&
+          summaryDone.text.includes('已参考当前文档') &&
+          lastRequestAfterSummary &&
+          lastRequestAfterSummary.hasContext === true,
+        {
+          status: summaryDone && summaryDone.status,
+          includesMarker: Boolean(summaryDone && summaryDone.text.includes('已参考当前文档')),
+          hasContext: Boolean(lastRequestAfterSummary && lastRequestAfterSummary.hasContext),
+        }
+      )
+
+      const stopFlow = await run(
+        'ai-stop-flow',
+        `const composer = document.getElementById('ai-composer');
+         composer.value = '慢速测试';
+         composer.dispatchEvent(new Event('input', { bubbles: true }));
+         document.getElementById('ai-send').click();
+         const startedAt = Date.now();
+         let stopVisible = false;
+         while (Date.now() - startedAt < 5000) {
+           await new Promise((resolve) => setTimeout(resolve, 150));
+           const stop = document.getElementById('ai-stop');
+           if (stop && !stop.hidden) {
+             stopVisible = true;
+             stop.click();
+             break;
+           }
+         }
+         await new Promise((resolve) => setTimeout(resolve, 500));
+         const articles = [...document.querySelectorAll('#ai-messages article.ai-msg[data-role="assistant"]')];
+         const last = articles[articles.length - 1];
+         return {
+           stopVisible,
+           status: last && last.dataset.status,
+           sendEnabled: !document.getElementById('ai-send').disabled,
+         }`
+      )
+      assert(
+        '生成中可以停止，消息标记 cancelled 且输入恢复',
+        stopFlow && stopFlow.stopVisible === true && /cancelled|stopped/i.test(stopFlow.status || ''),
+        stopFlow
+      )
+
+      const errorFlow = await run(
+        'ai-error-flow',
+        `const composer = document.getElementById('ai-composer');
+         composer.value = '触发限流';
+         composer.dispatchEvent(new Event('input', { bubbles: true }));
+         document.getElementById('ai-send').click();
+         const startedAt = Date.now();
+         let last = null;
+         while (Date.now() - startedAt < 15000) {
+           await new Promise((resolve) => setTimeout(resolve, 250));
+           const articles = [...document.querySelectorAll('#ai-messages article.ai-msg[data-role="assistant"]')];
+           last = articles[articles.length - 1];
+           if (last && last.dataset.status !== 'streaming') break;
+         }
+         return {
+           status: last && last.dataset.status,
+           text: last ? last.textContent : '',
+           retry: Boolean(
+             last &&
+               [...last.querySelectorAll('button')].some((button) => (button.textContent || '').includes('重试'))
+           ),
+         }`
+      )
+      assert(
+        '429 错误展示可重试的错误卡片',
+        errorFlow &&
+          errorFlow.status === 'error' &&
+          errorFlow.text.includes('请求过于频繁') &&
+          errorFlow.retry === true,
+        errorFlow && { status: errorFlow.status, text: errorFlow.text.slice(0, 160), retry: errorFlow.retry }
+      )
+
+      const historyFlow = await run(
+        'ai-history',
+        `document.getElementById('ai-new-chat').click();
+         await new Promise((resolve) => setTimeout(resolve, 300));
+         document.getElementById('ai-history').click();
+         await new Promise((resolve) => setTimeout(resolve, 300));
+         const popover = document.getElementById('ai-history-popover');
+         const items = popover ? [...popover.querySelectorAll('li[data-session-id]')] : [];
+         const item = items[0];
+         const label = item ? item.textContent : '';
+         if (item) (item.querySelector('button:not([data-session-delete])') || item).click();
+         await new Promise((resolve) => setTimeout(resolve, 500));
+         return {
+           visible: !!popover && !popover.hidden,
+           count: items.length,
+           label,
+           messages: document.querySelectorAll('#ai-messages article.ai-msg').length,
+         }`
+      )
+      assert(
+        '历史会话列表可用并能恢复会话',
+        historyFlow && historyFlow.count >= 1 && historyFlow.messages >= 2,
+        historyFlow && { count: historyFlow.count, messages: historyFlow.messages }
+      )
+
+      const aiSettingsPersisted = await run(
+        'ai-settings-persisted',
+        `const settings = await window.api.saveSettings({});
+         return {
+           model: settings.aiModel,
+           panelMode: settings.aiPanelMode,
+           panelWidth: settings.aiPanelWidth,
+           includeContext: settings.aiIncludeContext,
+         }`
+      )
+      assert(
+        'AI 设置持久化（model/panelMode/panelWidth/includeContext）',
+        aiSettingsPersisted &&
+          aiSettingsPersisted.model === 'deepseek-v4-pro' &&
+          aiSettingsPersisted.panelMode === 'open' &&
+          Number(aiSettingsPersisted.panelWidth) >= 320,
+        aiSettingsPersisted
+      )
+
+      // 窄窗口：面板应从 dock 切换为 overlay，且无横向溢出
+      const originalAiBounds = win.getContentBounds()
+      win.setContentSize(900, 600)
+      await delay(500)
+      const aiOverlay = await run(
+        'ai-overlay',
+        `return {
+           width: window.innerWidth,
+           overlay: document.getElementById('app').dataset.aiOverlay || null,
+           overflowX: document.documentElement.scrollWidth > window.innerWidth + 1,
+         }`
+      )
+      win.setContentBounds(originalAiBounds)
+      await delay(400)
+      assert(
+        '窄窗口（900×600）AI 面板切换为 overlay 且无横向溢出',
+        aiOverlay && aiOverlay.overlay === 'true' && aiOverlay.overflowX === false,
+        aiOverlay
+      )
+
+      // 截图 22/23/24：先准备一段干净的成功对话（Markdown + 代码块 + 上下文）
+      await run(
+        'ai-shot-prepare',
+        `document.getElementById('ai-new-chat').click();
+         await new Promise((resolve) => setTimeout(resolve, 300));
+         const contextToggle = document.getElementById('ai-context-toggle');
+         if (contextToggle && contextToggle.dataset.checked !== 'true') contextToggle.click();
+         await new Promise((resolve) => setTimeout(resolve, 200));
+         const composer = document.getElementById('ai-composer');
+         composer.value = '这段开头可以怎么改得更含蓄？';
+         composer.dispatchEvent(new Event('input', { bubbles: true }));
+         document.getElementById('ai-send').click();
+         return true`
+      )
+      const shotReply = await waitFor(
+        'ai-shot-reply',
+        `const articles = [...document.querySelectorAll('#ai-messages article.ai-msg[data-role="assistant"]')];
+         const last = articles[articles.length - 1];
+         if (!last || last.dataset.status === 'streaming') return null;
+         return { status: last.dataset.status, text: last.textContent || '' }`
+      )
+      assert(
+        '截图前对话准备完成（含当前文档上下文）',
+        shotReply && shotReply.status === 'done' && shotReply.text.includes('写作建议'),
+        shotReply && { status: shotReply.status }
+      )
+      await run(
+        'ai-shot-light',
+        `await window.__qm.setTheme('light');
+         await new Promise((resolve) => setTimeout(resolve, 350));
+         document.getElementById('toasts').replaceChildren();
+         return true`
+      )
+      await delay(300)
+      await shot('22-ai-panel-light')
+      await run(
+        'ai-shot-dark',
+        `await window.__qm.setTheme('dark');
+         await new Promise((resolve) => setTimeout(resolve, 350));
+         document.getElementById('toasts').replaceChildren();
+         return true`
+      )
+      await delay(300)
+      await shot('23-ai-panel-dark')
+      await run(
+        'ai-shot-settings',
+        `await window.__qm.setTheme('light');
+         document.getElementById('ai-settings-open').click();
+         await new Promise((resolve) => setTimeout(resolve, 300));
+         document.getElementById('toasts').replaceChildren();
+         return true`
+      )
+      await delay(250)
+      await shot('24-ai-settings')
+      await run(
+        'ai-cleanup',
+        `const close = document.getElementById('ai-settings-close');
+         if (close && !document.getElementById('ai-settings').hidden) close.click();
+         await new Promise((resolve) => setTimeout(resolve, 200));
+         document.getElementById('ai-toggle').click();
+         await new Promise((resolve) => setTimeout(resolve, 250));
+         await window.api.ai.clearKey();
+         await window.api.saveSettings({ aiPanelMode: 'closed', aiModel: 'deepseek-flash', aiIncludeContext: false });
+         return true`
+      )
+      await delay(300)
+    } else {
+      step('AI 面板验收', { skipped: true, reason: '未提供 --ai-base-url（需通过 npm run smoke 启动）' })
     }
 
     // 10. 未捕获错误

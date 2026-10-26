@@ -9,6 +9,7 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
+import http from 'node:http'
 import path from 'node:path'
 import process from 'node:process'
 import { createRequire } from 'node:module'
@@ -27,6 +28,162 @@ function argValue(name) {
 }
 
 const packagedApp = argValue('--app')
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * 本地 Mock AI 服务（DeepSeek Responses 协议）：
+ * e2e 不依赖真实 API Key；通过 --ai-base-url 指向这里。
+ * 剧本：普通回答 / 上下文回答 / 慢速流（停止测试）/ 429 / 500。
+ */
+async function startMockAiServer() {
+  let lastRequest = null
+  const server = http.createServer((req, res) => {
+    const chunks = []
+    req.on('data', (chunk) => chunks.push(chunk))
+    req.on('end', () => {
+      const bodyText = Buffer.concat(chunks).toString('utf8')
+      const auth = String(req.headers.authorization || '')
+      const authorized = auth.startsWith('Bearer ') && auth.slice(7).trim().length > 0
+
+      if (req.method === 'GET' && req.url === '/models') {
+        if (!authorized) {
+          res.writeHead(401, { 'content-type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ error: { message: 'Invalid API key', type: 'authentication_error' } }))
+          return
+        }
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify({ object: 'list', data: [{ id: 'deepseek-flash' }, { id: 'deepseek-v4-pro' }] }))
+        return
+      }
+
+      if (req.method === 'GET' && req.url === '/__last-request') {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify(lastRequest))
+        return
+      }
+
+      if (req.method !== 'POST' || req.url !== '/responses') {
+        res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify({ error: { message: 'not found' } }))
+        return
+      }
+
+      let payload = {}
+      try {
+        payload = JSON.parse(bodyText || '{}')
+      } catch {
+        payload = {}
+      }
+      const lastUser = [...(Array.isArray(payload.input) ? payload.input : [])]
+        .reverse()
+        .find((item) => item && item.role === 'user')
+      const userText = String((lastUser && lastUser.content) || '')
+      lastRequest = {
+        model: payload.model,
+        input: payload.input,
+        instructions: payload.instructions,
+        hasContext: /<当前文档/.test(String(payload.instructions || '')),
+        userText,
+      }
+
+      if (!authorized) {
+        res.writeHead(401, { 'content-type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify({ error: { message: 'Invalid API key', type: 'authentication_error' } }))
+        return
+      }
+
+      if (userText.includes('触发限流')) {
+        res.writeHead(429, { 'content-type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify({ error: { message: 'Rate limit reached for requests' } }))
+        return
+      }
+      if (userText.includes('触发错误')) {
+        res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify({ error: { message: 'Internal server error' } }))
+        return
+      }
+
+      res.writeHead(200, {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+      })
+      const writeEvent = (type, data) => {
+        res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`)
+      }
+      const timers = []
+      const clearTimers = () => timers.forEach((timer) => clearTimeout(timer))
+      res.on('close', clearTimers)
+      req.on('aborted', clearTimers)
+
+      writeEvent('response.created', { type: 'response.created', response: { id: 'resp_mock', status: 'in_progress' } })
+
+      if (userText.includes('慢速')) {
+        // 每 150ms 一段，共 80 段，留足时间点「停止生成」
+        let index = 0
+        const tick = () => {
+          index += 1
+          writeEvent('response.output_text.delta', {
+            type: 'response.output_text.delta',
+            delta: `慢速分片 ${index}。`,
+          })
+          if (index >= 80) {
+            writeEvent('response.completed', {
+              type: 'response.completed',
+              response: { id: 'resp_mock', status: 'completed', usage: { input_tokens: 10, output_tokens: index } },
+            })
+            res.end()
+            return
+          }
+          timers.push(setTimeout(tick, 150))
+        }
+        timers.push(setTimeout(tick, 150))
+        return
+      }
+
+      const segments = [
+        '# 写作建议\n\n这段开头的画面感不错，可以再收一点。\n\n',
+        lastRequest.hasContext ? '已参考当前文档。\n\n' : '',
+        `模型：${payload.model || 'unknown'}。\n\n`,
+        "```markdown\n# 第一章 · 雨夜\n\n雨丝在路灯下被拉长。\n```\n",
+      ].filter(Boolean)
+      let index = 0
+      const tick = () => {
+        if (index < segments.length) {
+          writeEvent('response.output_text.delta', { type: 'response.output_text.delta', delta: segments[index] })
+          index += 1
+          timers.push(setTimeout(tick, 20))
+          return
+        }
+        writeEvent('response.completed', {
+          type: 'response.completed',
+          response: {
+            id: 'resp_mock',
+            status: 'completed',
+            usage: { input_tokens: 64, output_tokens: 32, total_tokens: 96 },
+          },
+        })
+        res.end()
+      }
+      tick()
+    })
+  })
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => resolve())
+  })
+  const address = server.address()
+  const url = `http://127.0.0.1:${address.port}`
+  return {
+    url,
+    close: () =>
+      new Promise((resolve) => {
+        server.close(() => resolve())
+        server.closeAllConnections?.()
+      }),
+  }
+}
 
 async function prepareWorkspace() {
   await fsp.rm(artifactsDir, { recursive: true, force: true })
@@ -131,10 +288,12 @@ async function runAutoSaveCloseCheck({ electronExe, packagedApp: isPackaged, pro
 
 async function main() {
   const paths = await prepareWorkspace()
+  const mockAi = await startMockAiServer()
 
   const electronExe = packagedApp ? path.resolve(packagedApp) : require('electron')
   if (!fs.existsSync(electronExe)) {
     console.error(`找不到可执行文件：${electronExe}`)
+    await mockAi.close()
     process.exit(2)
   }
 
@@ -151,6 +310,8 @@ async function main() {
     paths.userData,
     '--delay',
     '800',
+    '--ai-base-url',
+    mockAi.url,
   ]
   const args = packagedApp ? appArgs : [projectRoot, ...appArgs]
 
@@ -160,6 +321,7 @@ async function main() {
   console.log(`[smoke] 启动：${electronExe}`)
   console.log(`[smoke] 工作区：${paths.workspace}`)
   console.log(`[smoke] 截图目录：${paths.screenshots}`)
+  console.log(`[smoke] Mock AI：${mockAi.url}`)
 
   const child = spawn(electronExe, args, { cwd: projectRoot, env, stdio: ['ignore', 'pipe', 'pipe'] })
   let stdout = ''
@@ -226,6 +388,7 @@ async function main() {
     failed.length === 0 &&
     report.errors.length === 0 &&
     autoSaveCheck.pass === true
+  await mockAi.close()
   console.log(pass ? '[smoke] 通过 ✅' : '[smoke] 失败 ❌')
   process.exit(pass ? 0 : 1)
 }

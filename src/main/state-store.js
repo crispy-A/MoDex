@@ -10,12 +10,15 @@ const path = require('node:path')
 const THEMES = ['system', 'light', 'dark']
 const VIEW_MODES = ['edit', 'split', 'preview']
 const PREVIEW_STYLES = ['codex', 'github', 'vue', 'notion', 'feishu', 'tailwind', 'serif']
+const AI_MODELS = ['deepseek-flash', 'deepseek-v4-pro']
+const AI_PANEL_MODES = ['closed', 'open', 'rail']
 const MAX_RECENT = 10
 const MAX_OPEN_FOLDERS = 12
 
 const NUMERIC_LIMITS = {
   sidebarWidth: { min: 180, max: 520, fallback: 260 },
   fontSize: { min: 12, max: 24, fallback: 15 },
+  aiPanelWidth: { min: 320, max: 560, fallback: 360 },
 }
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -30,6 +33,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   openFolders: Object.freeze([]),
   activeFolder: null,
   previewStyle: 'codex',
+  aiPanelMode: 'closed',
+  aiPanelWidth: 360,
+  aiModel: 'deepseek-flash',
+  aiIncludeContext: false,
 })
 
 function isPlainObject(value) {
@@ -87,6 +94,11 @@ function sanitizeSettings(raw) {
     openFolders,
     activeFolder,
     previewStyle: PREVIEW_STYLES.includes(input.previewStyle) ? input.previewStyle : DEFAULT_SETTINGS.previewStyle,
+    aiPanelMode: AI_PANEL_MODES.includes(input.aiPanelMode) ? input.aiPanelMode : DEFAULT_SETTINGS.aiPanelMode,
+    aiPanelWidth: clampNumber(input.aiPanelWidth, NUMERIC_LIMITS.aiPanelWidth),
+    aiModel: AI_MODELS.includes(input.aiModel) ? input.aiModel : DEFAULT_SETTINGS.aiModel,
+    aiIncludeContext:
+      typeof input.aiIncludeContext === 'boolean' ? input.aiIncludeContext : DEFAULT_SETTINGS.aiIncludeContext,
   }
 }
 
@@ -281,6 +293,8 @@ module.exports = {
   THEMES,
   VIEW_MODES,
   PREVIEW_STYLES,
+  AI_MODELS,
+  AI_PANEL_MODES,
   MAX_RECENT,
   MAX_OPEN_FOLDERS,
   NUMERIC_LIMITS,

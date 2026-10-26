@@ -8,7 +8,7 @@
  * - 文件夹变更监听（fs.watch + 防抖通知渲染层刷新文件树）
  * - 开发/验收辅助：--screenshot 截图、--e2e 端到端脚本、--user-data 隔离数据目录
  */
-const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, shell, screen, nativeTheme } = require('electron')
+const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, shell, screen, nativeTheme, net, safeStorage } = require('electron')
 const fs = require('node:fs')
 const fsp = fs.promises
 const path = require('node:path')
@@ -16,6 +16,7 @@ const path = require('node:path')
 const fsService = require('./fs-service.js')
 const { StateStore } = require('./state-store.js')
 const { createAppMenu, showAbout, showShortcuts } = require('./menu.js')
+const { createAiService } = require('./ai/ai-service.js')
 
 const APP_ROOT = path.join(__dirname, '..', '..')
 const RENDERER_DIR = path.join(APP_ROOT, 'src', 'renderer')
@@ -40,6 +41,7 @@ const FLAG_MAP = {
   '--autosave-test': 'autosaveTest',
   '--user-data': 'userData',
   '--delay': 'delayMs',
+  '--ai-base-url': 'aiBaseUrl',
 }
 
 const cli = parseCliArgs(process.argv.slice(app.isPackaged ? 1 : 2))
@@ -54,6 +56,7 @@ function parseCliArgs(argv) {
     autosaveTest: null,
     userData: null,
     delayMs: 1200,
+    aiBaseUrl: null,
   }
   const queue = []
   for (let i = 0; i < argv.length; i += 1) {
@@ -106,6 +109,8 @@ if (cli.userData) {
 let mainWindow = null
 /** @type {StateStore | null} */
 let store = null
+/** @type {ReturnType<typeof createAiService> | null} */
+let aiService = null
 let isDirty = false
 let forceClose = false
 let closeDialogOpen = false
@@ -382,6 +387,7 @@ function createWindow() {
 
   win.on('closed', () => {
     stopAllWatchers()
+    if (aiService) aiService.shutdown()
     if (mainWindow === win) mainWindow = null
   })
 
@@ -760,6 +766,17 @@ function registerIpc() {
     store.clearRecent(kind === 'file' || kind === 'folder' ? kind : 'all')
     return { ok: true }
   })
+
+  // ------------------------------------------------------------ AI 助手（Responses API）
+  aiService = createAiService({
+    userDataDir: app.getPath('userData'),
+    store,
+    safeStorage,
+    fetchImpl: (url, init) => net.fetch(url, init),
+    baseUrlOverride: cli.aiBaseUrl,
+    sendToRenderer,
+  })
+  aiService.registerIpc(handle)
 }
 
 // ---------------------------------------------------------------- 启动

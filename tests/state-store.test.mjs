@@ -21,6 +21,8 @@ import {
   MAX_RECENT,
   MAX_OPEN_FOLDERS,
   PREVIEW_STYLES,
+  AI_MODELS,
+  AI_PANEL_MODES,
 } from '../src/main/state-store.js'
 
 const fsp = fs.promises
@@ -165,6 +167,41 @@ test('StateStore：预览样式持久化与非法值回落', async (t) => {
 
   reloaded.updateSettings({ previewStyle: 'not-a-style' })
   assert.equal(reloaded.getSettings().previewStyle, 'codex')
+})
+
+test('sanitizeSettings：AI 面板字段默认值、枚举与宽度 clamp', () => {
+  const defaults = sanitizeSettings({})
+  assert.equal(defaults.aiPanelMode, 'closed')
+  assert.equal(defaults.aiPanelWidth, 360)
+  assert.equal(defaults.aiModel, 'deepseek-flash')
+  assert.equal(defaults.aiIncludeContext, false)
+
+  for (const mode of AI_PANEL_MODES) {
+    assert.equal(sanitizeSettings({ aiPanelMode: mode }).aiPanelMode, mode)
+  }
+  for (const model of AI_MODELS) {
+    assert.equal(sanitizeSettings({ aiModel: model }).aiModel, model)
+  }
+  assert.equal(sanitizeSettings({ aiPanelMode: 'hacked' }).aiPanelMode, 'closed')
+  assert.equal(sanitizeSettings({ aiModel: 'gpt-x' }).aiModel, 'deepseek-flash')
+  assert.equal(sanitizeSettings({ aiIncludeContext: 'true' }).aiIncludeContext, false)
+  assert.equal(sanitizeSettings({ aiPanelWidth: 9999 }).aiPanelWidth, 560)
+  assert.equal(sanitizeSettings({ aiPanelWidth: 1 }).aiPanelWidth, 320)
+  assert.equal(sanitizeSettings({ aiPanelWidth: 400 }).aiPanelWidth, 400)
+})
+
+test('StateStore：AI 设置持久化', async (t) => {
+  const file = await makeTempFile(t)
+  const store = new StateStore(file)
+  store.load()
+  store.updateSettings({ aiPanelMode: 'open', aiPanelWidth: 420, aiModel: 'deepseek-v4-pro', aiIncludeContext: true })
+  const reloaded = new StateStore(file)
+  reloaded.load()
+  const settings = reloaded.getSettings()
+  assert.equal(settings.aiPanelMode, 'open')
+  assert.equal(settings.aiPanelWidth, 420)
+  assert.equal(settings.aiModel, 'deepseek-v4-pro')
+  assert.equal(settings.aiIncludeContext, true)
 })
 
 test('StateStore：首次加载使用默认值，更新后持久化', async (t) => {

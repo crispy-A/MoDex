@@ -72,6 +72,21 @@ const api = {
   addRecent: (kind, targetPath) => invoke('recent:add', { kind, p: targetPath }),
   clearRecent: (kind) => invoke('recent:clear', kind),
 
+  // AI 助手（Responses API）：Key 与网络都在主进程，渲染层只拿到状态与事件
+  ai: {
+    bootstrap: () => invoke('ai:bootstrap'),
+    send: (payload) => invoke('ai:send', payload),
+    cancel: (requestId) => invoke('ai:cancel', { requestId }),
+    setKey: (key) => invoke('ai:set-key', { key }),
+    clearKey: () => invoke('ai:clear-key'),
+    testConnection: () => invoke('ai:test-connection'),
+    listSessions: () => invoke('ai:sessions:list'),
+    getSession: (id) => invoke('ai:sessions:get', { id }),
+    saveSession: (session) => invoke('ai:sessions:save', { session }),
+    deleteSession: (id) => invoke('ai:sessions:delete', { id }),
+    onEvent: (cb) => subscribe('ai:event', cb),
+  },
+
   // 事件
   onMenuAction: (cb) => subscribe('menu:action', cb),
   onTreeChanged: (cb) => subscribe('fs:tree-changed', cb),
