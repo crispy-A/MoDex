@@ -782,3 +782,48 @@
 ### 17.5 第七轮结论
 
 **✅ 通过，准予放行。** MoDex AI 写作助手 v1（右侧面板 + DeepSeek Responses API + 本地 safeStorage Key + 历史会话 + 上下文/截断/流式/停止/错误重试）功能矩阵 30/30 通过；安全专项（Key 不落渲染层、加密存储、XSS 过滤、IPC 来源校验、CSP 不变、Key 不进仓库）全部通过；86/86 单测、141/141+阶段二 dev 与打包 smoke、23/23 资源一致、无回归。最终交付物：`release/MoDex-1.0.0-win32-x64/MoDex.exe`。
+
+## 18. 微动效复验（task-19，**✅ 通过，准予放行**）
+
+- 复验时间：2026-10-26；改动：`styles.css` 微动效章节（菜单/二级菜单/AI 弹层 pop-in 120ms、AI 面板淡入 150ms/窄窗抽屉 180ms、AI 消息 140ms、设置弹窗 120/150ms、查找栏下滑 140ms、欢迎页/视图 pane 淡入、侧栏淡出、按钮按压 scale(.97) 90ms、生成中呼吸 1.6s）+ `app.js/ai-panel.js` 的 `is-layout-anim`（240ms 清理、拖拽不启用）+ `prefers-reduced-motion` 全局降级。
+- 复跑（串行，全部 exit 0）：
+  - `node artifacts/anim-check.mjs` **6/6 通过**（Lead 自检脚本复跑）；
+  - 独立专项 `artifacts/qa/audit-anim.mjs` **16/16 通过**；
+  - `npm test` **86/86**；
+  - dev smoke 两阶段 **141/141 + 阶段二通过**；打包 exe 两阶段 smoke **141/141 + 阶段二通过**；
+  - `resources/app/src` **23/23 SHA256 一致**；release 仅 `MoDex-1.0.0-win32-x64/`。
+
+### 18.1 动效正确性（实测）
+
+| 验证项 | 结果 | 证据 |
+| --- | --- | --- |
+| 应用菜单 pop-in 120ms，结束后完全展开（opacity=1、transform 无残余） | ✅ | AN1：`animationName=qm-pop-in, duration=0.12s`；settle 后 opacity 1 |
+| 预览样式二级菜单 pop-in，结束后完全可见 | ✅ | AN2 |
+| 查找栏 slide-down 140ms，结束后定位正常 | ✅ | AN3：`qm-slide-down` |
+| 侧栏开合：`is-layout-anim` + 190ms 列宽过渡，结束后 class 清理；隐藏后宽 **0**、主区占满、无横向溢出 | ✅ | AN4：mid.cls=true/transition=0.19s；settled.class 清理、sidebar=0 |
+| 侧栏恢复宽度约 260px、无溢出、无残留动画类 | ✅ | AN5 |
+| 拖拽侧栏调宽：**不启用** is-layout-anim（无列宽过渡迟滞）、宽度变化正常 | ✅ | AN6：mid.cls=false |
+| AI 面板打开：淡入动画 + 布局过渡类，结束后清理、宽度 320–560 | ✅ | AN7：`qm-fade-in 0.15s` |
+| AI 设置弹窗动画且 350ms 内完成、无残留 | ✅ | AN8 |
+| AI 面板关闭：布局过渡类出现并清理，主区宽度恢复到打开前、无溢出 | ✅ | AN9：关闭后 mainW 与打开前相差 ≤4px |
+| 按钮按压 scale(.97) 微动效（90ms 过渡，松开恢复） | ✅ | AN10：pressed=`matrix(0.97,…)`，released 恢复 |
+| 输入区/消息流区域无 transition 迟滞 | ✅ | AN11：textarea 与 #ai-messages transition-duration 均 0s |
+| 900×600：AI 面板 overlay、菜单打开无横向溢出 | ✅ | AN12 + 截图 `02-narrow-900x600.png` |
+| 深浅主题切换：颜色生效、无溢出、无残留动画类 | ✅ | AN13 + 截图 `03-settled-light.png`、`04-settled-dark.png` |
+| `prefers-reduced-motion: reduce`：菜单/AI/查找栏/布局过渡全部降级为 0 | ✅ | AN14（CDP 媒体模拟：duration 0s） |
+| 恢复 no-preference 后动画重新生效 | ✅ | AN15（重载页面清除模拟后 animationDuration 0.12s） |
+
+### 18.2 视觉
+
+- `artifacts/qa/anim-shots/settled-light.png`、`settled-dark.png`、`ai-panel-open.png`（Lead 自检脚本重新生成）审阅：稳定帧布局正常，无错位/半透明残留；AI 面板打开后编辑区/预览区列宽正确收缩。
+- `artifacts/qa/screenshots-anim-qa/` 补拍：AI 面板打开、900×600、浅/深 settled，均正常；smoke 重新生成的 `artifacts/e2e/screenshots/` 24 张无视觉回归。
+
+### 18.3 无回归与缺陷
+
+- menubar **24/24**、design **23/23**、audit-main **100/100** 本轮复跑通过；工具栏仍恰好 5 个 data-action；e2e 141/141 全绿。
+- 缺陷分级：**P0=0，P1=0**。新增 P2-25（低）：动画效果仅在渲染层，`prefers-reduced-motion` 已全局降级；无功能/安全问题。历史 P2 不变、不阻塞交付。
+- 验收过程中曾因残留 Electron 进程占用 e2e `userdata-autosave/lockfile` 导致一次 smoke EBUSY（QA 环境问题），清理后严格串行复跑通过，最终数字均来自干净环境。
+
+### 18.4 第八轮结论
+
+**✅ 通过，准予放行。** 微动效实现克制（120–190ms、无弹跳/缩放滥用），菜单/查找栏/侧栏/AI 面板/设置弹窗/按钮按压动效与布局过渡按时序正确、结束后无残留；侧栏隐藏宽 0、AI 面板开合布局可恢复、拖拽调宽无过渡迟滞、900×600 无溢出；`prefers-reduced-motion` 完整降级；86/86 单测、141/141+阶段二 dev 与打包 smoke、23/23 资源一致、无视觉/功能回归。最终交付物：`release/MoDex-1.0.0-win32-x64/MoDex.exe`。

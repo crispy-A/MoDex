@@ -238,9 +238,23 @@ export function initAiPanel(deps = {}) {
     if (resizer) resizer.hidden = mode !== 'open' || overlay
   }
 
+  /** 面板开合/换态时短暂启用网格列过渡（拖拽调宽不受影响） */
+  let layoutAnimTimer = null
+  function animateLayout() {
+    if (!appEl) return
+    appEl.classList.add('is-layout-anim')
+    if (layoutAnimTimer) clearTimeout(layoutAnimTimer)
+    layoutAnimTimer = setTimeout(() => {
+      layoutAnimTimer = null
+      appEl.classList.remove('is-layout-anim')
+    }, 240)
+  }
+
   function setMode(nextMode, { persist = true, focus = false } = {}) {
     if (!PANEL_MODES.includes(nextMode)) return
+    const previousMode = mode
     mode = nextMode
+    if (previousMode !== nextMode) animateLayout()
     const open = nextMode === 'open'
     if (panel) {
       panel.hidden = nextMode === 'closed'

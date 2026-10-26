@@ -271,3 +271,26 @@
   safeStorage 安全说明；保存并验证成功 toast「AI 已就绪」。
 - 默认关闭时应用与旧版视觉完全一致（工具栏仅多一个 22px AI 图标，不计入 data-action）。
 - 验收：`npm test` 86/86、`npm run smoke` 141/141、打包 exe smoke、QA §17（独立复验；见 QA 报告）。
+
+## 12. 微动效（交互流畅性）
+
+> 目标：让显隐、切换、消息出现更顺滑；**全部 ≤200ms、纯 CSS、无第三方库**，并尊重 `prefers-reduced-motion`。
+
+| 场景 | 动效 | 时长/曲线 |
+| --- | --- | --- |
+| 应用菜单 / 二级菜单 / 右键菜单 / AI 模型与历史弹层 | 透明度 + 上移 3px + 轻微缩放（`qm-pop-in`） | 120ms ease-out |
+| AI 面板展开（dock） | 淡入（`qm-fade-in`） | 150ms |
+| AI 面板覆盖式抽屉（<1180） | 从右滑入 22px + 淡入（`qm-panel-slide`） | 180ms |
+| AI 消息出现 | 上移 4px + 淡入（`qm-msg-in`） | 140ms |
+| AI 设置弹窗 | 背景淡入 + 卡片上移 6px/0.985 缩放（`qm-modal-in`） | 120/150ms |
+| 查找栏 | 下滑 6px + 淡入（`qm-slide-down`） | 140ms |
+| 欢迎页 / 编辑器与预览 pane（视图切换时） | 淡入 | 160/130ms |
+| 侧栏显隐、AI 面板开合 | 网格列宽过渡（仅切换瞬间加 `is-layout-anim`，拖拽调宽不启用） | 190ms |
+| 侧栏隐藏 | 宽度收起 + 150ms 淡出（不再瞬间 display:none） | 150ms |
+| 工具栏/面板/菜单/弹窗按钮 | 按压 `scale(0.97)` | 90ms |
+| AI 生成中提示行 | 轻微呼吸（opacity 0.72↔1） | 1.6s 循环 |
+
+- `prefers-reduced-motion: reduce` 时所有 transition/animation 降为 0.01ms（已有全局规则），不做动效。
+- 不改布局结构、不引入 JS 动画库；避免对高频操作（拖拽调宽、滚动、输入）加过渡。
+- 验收：`node artifacts/anim-check.mjs` 6/6、QA 微动效专项 16/16（动画名/时长、布局过渡类清理、拖拽无迟滞、
+  reduced-motion 降级、900×600 无溢出），e2e 141/141 + 阶段二、打包 exe 同，P0=0、P1=0（详见 `docs/QA-REPORT.md` §18）。

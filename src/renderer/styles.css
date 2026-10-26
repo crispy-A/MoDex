@@ -173,9 +173,19 @@ textarea:focus-visible,
   grid-template-columns: 0 0 minmax(0, 1fr);
 }
 
-#app[data-sidebar="hidden"] #sidebar,
+#app[data-sidebar="hidden"] #sidebar {
+  display: flex;
+  opacity: 0;
+  pointer-events: none;
+}
+
 #app[data-sidebar="hidden"] #sidebar-resizer {
   display: none;
+}
+
+/* 侧栏宽度变化（显隐）时淡入淡出，避免瞬间消失 */
+#sidebar {
+  transition: opacity 150ms var(--ease);
 }
 
 #toolbar {
@@ -4608,4 +4618,123 @@ body.is-resizing {
   .ai-rail-mark.is-generating::after {
     animation: none;
   }
+}
+
+/* ==========================================================================
+   微动效：整体交互流畅性（全部 ≤200ms，纯 CSS；reduced-motion 已全局降级）
+   ========================================================================== */
+
+@keyframes qm-pop-in {
+  from { opacity: 0; transform: translateY(-3px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes qm-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes qm-slide-down {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes qm-msg-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes qm-modal-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes qm-panel-slide {
+  from { opacity: 0; transform: translateX(22px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes qm-soft-pulse {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
+}
+
+/* 布局改变（侧栏显隐 / AI 面板开合）时，仅短暂启用网格列过渡，拖拽调宽不受影响 */
+#app.is-layout-anim {
+  transition: grid-template-columns 190ms var(--ease);
+}
+
+/* 菜单 / 二级菜单 / AI 弹层：轻量弹出 */
+#context-menu:not([hidden]),
+#app-menu:not([hidden]),
+#app-submenu:not([hidden]),
+#ai-model-menu:not([hidden]),
+#ai-history-popover:not([hidden]) {
+  animation: qm-pop-in 120ms var(--ease);
+  transform-origin: top left;
+}
+
+/* AI 面板：dock 淡入；窄窗口抽屉从右侧轻滑入 */
+#ai-panel:not([hidden]) {
+  animation: qm-fade-in 150ms var(--ease);
+}
+
+#app[data-ai-overlay="true"] #ai-panel:not([hidden]) {
+  animation: qm-panel-slide 180ms var(--ease);
+}
+
+/* AI 消息与设置弹窗 */
+.ai-msg {
+  animation: qm-msg-in 140ms var(--ease);
+}
+
+#ai-settings:not([hidden]) {
+  animation: qm-fade-in 120ms var(--ease);
+}
+
+#ai-settings:not([hidden]) .ai-modal {
+  animation: qm-modal-in 150ms var(--ease);
+}
+
+/* 查找栏 / 欢迎页 / 视图切换 */
+#findbar:not([hidden]) {
+  animation: qm-slide-down 140ms var(--ease);
+}
+
+#welcome {
+  animation: qm-fade-in 160ms var(--ease);
+}
+
+#editor-pane,
+#preview-pane {
+  animation: qm-fade-in 130ms var(--ease);
+}
+
+/* 按钮按压微反馈（保留颜色过渡） */
+#toolbar button,
+#ai-panel button,
+.ai-modal button,
+#findbar button,
+#context-menu button,
+#app-menu button {
+  transition:
+    transform 90ms var(--ease),
+    background-color var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    opacity var(--dur) var(--ease);
+}
+
+#toolbar button:active:not(:disabled),
+#ai-panel button:active:not(:disabled),
+.ai-modal button:active:not(:disabled),
+#findbar button:active:not(:disabled),
+#context-menu button:active:not(:disabled),
+#app-menu button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* 生成中：提示行轻微呼吸，避免静态界面显得卡住 */
+#ai-panel[data-generating="true"] #ai-hint {
+  animation: qm-soft-pulse 1.6s ease-in-out infinite;
 }

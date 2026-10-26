@@ -311,8 +311,21 @@ function applySidebar() {
   }
 }
 
+/** 侧栏显隐时短暂启用网格列过渡（不影响拖拽调宽） */
+let layoutAnimTimer = null
+function animateLayout() {
+  if (!appEl) return
+  appEl.classList.add('is-layout-anim')
+  if (layoutAnimTimer) clearTimeout(layoutAnimTimer)
+  layoutAnimTimer = setTimeout(() => {
+    layoutAnimTimer = null
+    appEl.classList.remove('is-layout-anim')
+  }, 240)
+}
+
 function setSidebarVisible(visible, { persist = true } = {}) {
   state.sidebarVisible = Boolean(visible)
+  animateLayout()
   applySidebar()
   if (persist) persistSettings({ sidebarVisible: state.sidebarVisible })
 }
