@@ -2,6 +2,7 @@
 
 > 除了绿色便携版，MoDex 现在可以生成标准 Windows 安装包（Inno Setup）。
 > 产物：`release/MoDex-<version>-setup.exe`（本版本 **98.2 MB**，含 MoDex Logo）。
+> 本版本安装包已随 Git 仓库提交（`release/MoDex-1.0.0-setup.exe` + `.sha256`），可直接下载；便携版目录因体积过大不入库。
 
 ![安装向导](installer/installer-wizard.png)
 
@@ -51,4 +52,5 @@ npm run installer -- --skip-package     # 复用已有 portable 产物，快速�
   如需消除提示，可购买代码签名证书后用 `signtool` 对 `MoDex-*.exe` 与安装包签名。
 - 便携版与安装版可共存，但共用 `%APPDATA%\MoDex` 用户数据；建议二选一使用。
 - 卸载保留用户数据是刻意设计（避免误删 AI Key / 会话）；彻底清理需手动删除 `%APPDATA%\MoDex`。
+
 
