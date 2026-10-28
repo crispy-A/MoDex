@@ -1,9 +1,5 @@
 ﻿node_modules/
-# release/ 默认忽略（便携版目录体积大、且单文件超过 GitHub 100MB 限制）
-# 仅放行 Windows 安装包及其校验文件
-/release/*
-!/release/MoDex-*-setup.exe
-!/release/MoDex-*-setup.exe.sha256
+release/
 artifacts/
 *.log
 .DS_Store

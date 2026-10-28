@@ -1,10 +1,16 @@
 ﻿# MoDex Windows 安装包
 
 > 除了绿色便携版，MoDex 现在可以生成标准 Windows 安装包（Inno Setup）。
-> 产物：`release/MoDex-<version>-setup.exe`（本版本 **98.2 MB**，含 MoDex Logo）。
-> 本版本安装包已随 Git 仓库提交（`release/MoDex-1.0.0-setup.exe` + `.sha256`），可直接下载；便携版目录因体积过大不入库。
+> 构建产物：`release/MoDex-<version>-setup.exe`（本版本 **98.2 MB**，含 MoDex Logo）。
+> **分发方式**：安装包与便携版通过 GitHub Releases 发布（仓库不提交二进制）；本版本 Release：<https://github.com/crispy-A/MoDex/releases/tag/v1.0.0>。
 
 ![安装向导](installer/installer-wizard.png)
+
+## 下载（GitHub Releases）
+
+- 安装包：`MoDex-1.0.0-setup.exe`（98.2 MB，SHA256 `3e13c845b82a3a938cbbaec33835f1144d624fcabd7790e1349d25382ed55270`）
+- 便携版压缩包：`MoDex-1.0.0-win32-x64-portable.zip`（130.8 MB，SHA256 `9361c1b3a9f4f7f2df49644e7df1a8fa0960347f4eff552e86047592ad84bc1a`）
+- 校验文件：两个 `.sha256` 与资产同页提供。
 
 ## 构建
 
@@ -52,5 +58,6 @@ npm run installer -- --skip-package     # 复用已有 portable 产物，快速�
   如需消除提示，可购买代码签名证书后用 `signtool` 对 `MoDex-*.exe` 与安装包签名。
 - 便携版与安装版可共存，但共用 `%APPDATA%\MoDex` 用户数据；建议二选一使用。
 - 卸载保留用户数据是刻意设计（避免误删 AI Key / 会话）；彻底清理需手动删除 `%APPDATA%\MoDex`。
+
 
 

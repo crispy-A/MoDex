@@ -106,6 +106,13 @@ npm start        # 启动应用
   只有打开「当前文档」上下文开关（或快捷提问）时才会把当前文档内容发给 DeepSeek，单次最多 20k 字符。
 - 未配置 Key 时应用完全离线可用，AI 面板会引导配置；测试/CI 使用本地 mock SSE 服务，不需要真实 Key。
 
+## 下载（GitHub Releases）
+
+- **Windows 安装包**：[MoDex-1.0.0-setup.exe](https://github.com/crispy-A/MoDex/releases/download/v1.0.0/MoDex-1.0.0-setup.exe)（98.2 MB）
+- **绿色便携版**：[MoDex-1.0.0-win32-x64-portable.zip](https://github.com/crispy-A/MoDex/releases/download/v1.0.0/MoDex-1.0.0-win32-x64-portable.zip)（130.8 MB，解压即用）
+- 校验文件（`.sha256`）与安装包/便携版同一 Release 页面提供。
+- 仓库不再提交二进制文件（安装包/便携版通过 [Releases](https://github.com/crispy-A/MoDex/releases) 分发），保持仓库轻量。
+
 ## 打包便携版
 
 ```powershell
@@ -137,7 +144,7 @@ npm run installer
 - 安装包未签名，首次运行 SmartScreen 可能提示「未知发布者」；桌面/开始菜单图标为 MoDex Logo；详细说明、构建参数与验证记录见
   [docs/INSTALLER.md](docs/INSTALLER.md)。
 - 已用「安装 → 已安装 exe 跑完整两阶段 smoke（141/141 + 阶段二）→ 静默卸载」验证清理干净。
-- 安装包与 .sha256 校验文件已随仓库提交：`release/MoDex-1.0.0-setup.exe`（98.2 MB）；便携版目录因单文件超过 GitHub 限制不入库。
+- 安装包与便携版通过 **GitHub Releases** 分发（含 `.sha256` 校验）；仓库只保留源码与构建脚本，二进制不入库。
 
 ## 测试与验收
 
@@ -232,6 +239,7 @@ md-editor/
 - 应用图标以 `assets/logo/modex-logo.svg` 为单一矢量源：`npm run icons` 用 sharp 生成多尺寸 ICO/PNG，`npm run package` 用 rcedit 把图标与产品版本信息写入 `MoDex.exe`；安装包/快捷方式使用该 exe 图标。
 - 端到端验收通过 CDP `Page.captureScreenshot` 截图（能包含右键菜单等浮层），失败时回退 `webContents.capturePage`。
 - 更名说明：应用原名为「轻墨 / QingMo」，本版本更名为 **MoDex**；用户数据目录随产品名变为 `%APPDATA%\MoDex`。
+
 
 
 
