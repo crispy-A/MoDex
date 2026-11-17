@@ -44,6 +44,9 @@ const DEFAULT_SETTINGS = {
   aiPanelWidth: 360,
   aiModel: 'deepseek-flash',
   aiIncludeContext: false,
+  aiContextWindow: '128k',
+  aiMaxOutputTokens: 8192,
+  aiReasoningEffort: 'high',
 }
 const MAX_ROOTS = 12
 const VIEW_NAMES = { edit: '编辑', split: '分栏', preview: '预览' }
@@ -82,6 +85,12 @@ const PREVIEW_STYLE_IDS = new Set(PREVIEW_STYLE_OPTIONS.map((option) => option.i
 /** AI 模型 id（与主进程 provider-registry 保持一致，仅用于渲染层清洗/兜底） */
 const AI_MODEL_IDS = new Set(['deepseek-flash', 'deepseek-v4-pro'])
 const AI_PANEL_MODES = new Set(['closed', 'open', 'rail'])
+/** AI 生成参数枚举/范围（与主进程 settings 契约保持一致，仅用于渲染层清洗/兜底） */
+const AI_CONTEXT_WINDOW_IDS = new Set(['auto', '32k', '64k', '128k', '256k', '512k', '1m'])
+const AI_REASONING_EFFORT_IDS = new Set(['none', 'low', 'high', 'max'])
+const AI_MAX_OUTPUT_TOKENS_MIN = 1024
+const AI_MAX_OUTPUT_TOKENS_MAX = 393216
+const AI_MAX_OUTPUT_TOKENS_DEFAULT = 8192
 
 /**
  * 应用菜单定义（单条导航栏，内容与原生菜单一一对应，不新增功能）。
@@ -385,6 +394,12 @@ function applySettings() {
   settings.aiPanelWidth = Math.round(clamp(settings.aiPanelWidth, 320, 560))
   if (!AI_MODEL_IDS.has(settings.aiModel)) settings.aiModel = 'deepseek-flash'
   settings.aiIncludeContext = Boolean(settings.aiIncludeContext)
+  if (!AI_CONTEXT_WINDOW_IDS.has(settings.aiContextWindow)) settings.aiContextWindow = '128k'
+  const aiMaxOutputTokens = Math.round(Number(settings.aiMaxOutputTokens))
+  settings.aiMaxOutputTokens = Number.isFinite(aiMaxOutputTokens)
+    ? clamp(aiMaxOutputTokens, AI_MAX_OUTPUT_TOKENS_MIN, AI_MAX_OUTPUT_TOKENS_MAX)
+    : AI_MAX_OUTPUT_TOKENS_DEFAULT
+  if (!AI_REASONING_EFFORT_IDS.has(settings.aiReasoningEffort)) settings.aiReasoningEffort = 'high'
 
   // 多根工作区：清洗已保存的文件夹列表与当前激活根
   settings.openFolders = normalizeOpenFolders(settings.openFolders)
@@ -1706,6 +1721,9 @@ if (typeof window !== 'undefined') {
         aiPanelWidth: state.settings.aiPanelWidth,
         aiModel: state.settings.aiModel,
         aiIncludeContext: state.settings.aiIncludeContext,
+        aiContextWindow: state.settings.aiContextWindow,
+        aiMaxOutputTokens: state.settings.aiMaxOutputTokens,
+        aiReasoningEffort: state.settings.aiReasoningEffort,
       }
     },
     async openPath(path) {

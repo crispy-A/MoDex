@@ -6,12 +6,17 @@
  * - streamResponses：发起流式请求、解析 SSE、把 text/reasoning 增量交给回调，返回最终状态
  * 注意：API Key 只由调用方（主进程 ai-service）注入 headers，本模块不读取/记录 Key。
  */
-const { buildInstructions } = require('./provider-registry.js')
+const { buildInstructions, getModel } = require('./provider-registry.js')
+const {
+  DEFAULT_MAX_OUTPUT_TOKENS,
+  estimateTokens,
+  planInput,
+  resolveReasoningEffort,
+} = require('./context-budget.js')
 const { createSseParser } = require('./sse.js')
 
 const FIRST_BYTE_TIMEOUT_MS = 30000
 const IDLE_TIMEOUT_MS = 60000
-const DEFAULT_MAX_OUTPUT_TOKENS = 2048
 
 const STATUS_ERRORS = Object.freeze({
   400: { code: 'INVALID_REQUEST', message: '请求参数有误，请重试或更换模型', retryable: false },
@@ -30,13 +35,36 @@ function normalizeUsage(usage) {
   return { input, output, total }
 }
 
-/** 构造 POST /responses 请求（不含 Authorization，Key 由调用方注入） */
-function buildResponsesRequest({ baseUrl, model, messages, context = null, maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS }) {
-  const { instructions, truncated, contextChars } = buildInstructions(context)
-  const input = (Array.isArray(messages) ? messages : []).map((message) => ({
-    role: message && message.role === 'assistant' ? 'assistant' : 'user',
-    content: String((message && message.content) || ''),
+/**
+ * 构造 POST /responses 请求（不含 Authorization，Key 由调用方注入）。
+ * 上下文窗口 / 最大输出 / 思考等级来自设置，模型上限取自 provider 注册表；
+ * 超出窗口时按 context-budget 的预算裁剪文档与历史消息。
+ */
+function buildResponsesRequest({
+  baseUrl,
+  model,
+  messages,
+  context = null,
+  maxOutputTokens = undefined,
+  contextWindow = undefined,
+  reasoningEffort = undefined,
+}) {
+  const modelInfo = getModel(model)
+  const plan = planInput({
+    messages,
+    context,
+    model: modelInfo,
+    settings: { aiContextWindow: contextWindow, aiMaxOutputTokens: maxOutputTokens },
+  })
+  const { instructions, truncated, contextChars } = buildInstructions(plan.context, plan.docCharLimit)
+  const input = plan.messages.map((message) => ({
+    role: message.role === 'assistant' ? 'assistant' : 'user',
+    content: String(message.content || ''),
   }))
+  const effort = resolveReasoningEffort(reasoningEffort)
+  const estimatedInputTokens =
+    estimateTokens(instructions) + input.reduce((sum, message) => sum + estimateTokens(message.content) + 4, 0)
+
   return {
     url: `${String(baseUrl || '').replace(/\/+$/, '')}/responses`,
     headers: {
@@ -48,9 +76,20 @@ function buildResponsesRequest({ baseUrl, model, messages, context = null, maxOu
       instructions,
       input,
       stream: true,
-      max_output_tokens: Math.max(1, Math.min(8192, Number(maxOutputTokens) || DEFAULT_MAX_OUTPUT_TOKENS)),
+      max_output_tokens: plan.maxOutputTokens,
+      reasoning: { effort },
     },
-    meta: { contextChars, truncated, inputMessages: input.length },
+    meta: {
+      contextChars,
+      truncated,
+      inputMessages: input.length,
+      droppedMessages: plan.droppedMessages,
+      messageTruncated: plan.messageTruncated,
+      windowTokens: plan.windowTokens,
+      maxOutputTokens: plan.maxOutputTokens,
+      reasoningEffort: effort,
+      estimatedInputTokens,
+    },
   }
 }
 

@@ -420,6 +420,45 @@
               </select>
             </div>
 
+            <div class="ai-field">
+              <label for="ai-context-window">上下文窗口</label>
+              <select id="ai-context-window" class="ai-select">
+                <option value="auto">自动（1M）</option>
+                <option value="32k">32K</option>
+                <option value="64k">64K</option>
+                <option value="128k" selected>128K（推荐）</option>
+                <option value="256k">256K</option>
+                <option value="512k">512K</option>
+                <option value="1m">1M</option>
+              </select>
+              <p class="ai-field-hint">控制对话历史与当前文档的输入预算，超出时自动裁剪最早消息。</p>
+            </div>
+
+            <div class="ai-field">
+              <label for="ai-max-output">最大输出 token</label>
+              <select id="ai-max-output" class="ai-select">
+                <option value="4096">4K</option>
+                <option value="8192" selected>8K（推荐）</option>
+                <option value="16384">16K</option>
+                <option value="32768">32K</option>
+                <option value="65536">64K</option>
+                <option value="131072">128K</option>
+                <option value="393216">384K（上限）</option>
+              </select>
+              <p class="ai-field-hint">DeepSeek 官方单次输出上限 384K，思考内容也计入输出额度。</p>
+            </div>
+
+            <div class="ai-field">
+              <label for="ai-reasoning-effort">思考等级</label>
+              <select id="ai-reasoning-effort" class="ai-select">
+                <option value="none">关闭（最快最省）</option>
+                <option value="low">低</option>
+                <option value="high" selected>高（默认）</option>
+                <option value="max">最高</option>
+              </select>
+              <p class="ai-field-hint">对应 Responses API reasoning.effort，默认 high，none 关闭思考。</p>
+            </div>
+
             <div class="ai-field ai-test-field">
               <div class="ai-test-left">
                 <label>连接测试</label>

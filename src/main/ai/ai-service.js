@@ -102,6 +102,9 @@ function createAiService({
         panelMode: settings.aiPanelMode,
         panelWidth: settings.aiPanelWidth,
         includeContext: settings.aiIncludeContext,
+        contextWindow: settings.aiContextWindow,
+        maxOutputTokens: settings.aiMaxOutputTokens,
+        reasoningEffort: settings.aiReasoningEffort,
       },
       hasKey: status.hasKey,
       maskedKey: status.maskedKey,
@@ -109,7 +112,8 @@ function createAiService({
   }
 
   async function runStream(record, request, key) {
-    emit({ requestId: record.requestId, type: 'started' })
+    // meta 仅含窗口/裁剪统计，用于渲染层提示与排查，不含文档内容或 Key
+    emit({ requestId: record.requestId, type: 'started', meta: request.meta })
     let result
     try {
       result = await streamResponses({
@@ -178,7 +182,17 @@ function createAiService({
     const key = await credentials.getKey()
     if (!key) return fail('NO_KEY', '请先在 AI 设置中配置 API Key')
 
-    const request = buildResponsesRequest({ baseUrl, model, messages, context })
+    // 生成参数在发送时从设置读取：渲染层无法伪造请求参数，主进程统一裁剪与限额
+    const settings = store.getSettings()
+    const request = buildResponsesRequest({
+      baseUrl,
+      model,
+      messages,
+      context,
+      maxOutputTokens: settings.aiMaxOutputTokens,
+      contextWindow: settings.aiContextWindow,
+      reasoningEffort: settings.aiReasoningEffort,
+    })
     const record = { requestId, controller: new AbortController(), cancelled: false }
     active = record
     void runStream(record, request, key)

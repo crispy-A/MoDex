@@ -85,6 +85,9 @@ async function startMockAiServer() {
         instructions: payload.instructions,
         hasContext: /<当前文档/.test(String(payload.instructions || '')),
         userText,
+        maxOutputTokens: payload.max_output_tokens,
+        reasoningEffort: payload.reasoning && payload.reasoning.effort,
+        stream: payload.stream,
       }
 
       if (!authorized) {

@@ -37,6 +37,19 @@ const DEFAULT_PANEL_WIDTH = 360
 const TITLE_LIMIT = 24
 const STREAM_RENDER_INTERVAL = 50
 
+/**
+ * AI 生成参数（上下文窗口 / 最大输出 token / 思考等级）。
+ * 与主进程 settings 契约保持一致：这里只用于渲染层回填与兜底，不参与 ai:send payload。
+ */
+const CONTEXT_WINDOW_OPTIONS = ['auto', '32k', '64k', '128k', '256k', '512k', '1m']
+const MAX_OUTPUT_TOKEN_OPTIONS = [4096, 8192, 16384, 32768, 65536, 131072, 393216]
+const REASONING_EFFORT_OPTIONS = ['none', 'low', 'high', 'max']
+const DEFAULT_CONTEXT_WINDOW = '128k'
+const DEFAULT_MAX_OUTPUT_TOKENS = 8192
+const DEFAULT_REASONING_EFFORT = 'high'
+const MIN_OUTPUT_TOKENS = 1024
+const MAX_OUTPUT_TOKENS = 393216
+
 let MODULE_ID = 0
 
 function genId(prefix) {
@@ -76,6 +89,20 @@ function formatDuration(ms) {
   return `${Math.round(value / 60000)}m`
 }
 
+/** 最大输出 token：取整并夹到契约范围，非数字回落默认值 8192 */
+function clampOutputTokens(value) {
+  const tokens = Math.round(Number(value))
+  if (!Number.isFinite(tokens)) return DEFAULT_MAX_OUTPUT_TOKENS
+  return clamp(tokens, MIN_OUTPUT_TOKENS, MAX_OUTPUT_TOKENS)
+}
+
+/** 把数值映射到 select 的既有档位：回落到不超过该值的最大档位（低于最小档位时取最小档位） */
+function snapOutputTokens(value) {
+  const tokens = clampOutputTokens(value)
+  const matched = MAX_OUTPUT_TOKEN_OPTIONS.filter((option) => option <= tokens)
+  return matched.length ? matched[matched.length - 1] : MAX_OUTPUT_TOKEN_OPTIONS[0]
+}
+
 function humanError(error) {
   if (!error) return { code: 'UNKNOWN', message: '请求失败，请重试', retryable: true }
   if (typeof error === 'string') return { code: 'UNKNOWN', message: error, retryable: true }
@@ -101,6 +128,9 @@ export function initAiPanel(deps = {}) {
       aiPanelWidth: DEFAULT_PANEL_WIDTH,
       aiModel: DEFAULT_MODEL,
       aiIncludeContext: false,
+      aiContextWindow: DEFAULT_CONTEXT_WINDOW,
+      aiMaxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+      aiReasoningEffort: DEFAULT_REASONING_EFFORT,
     }
   const aiApi = deps.api?.ai || null
   const toast = deps.toast || {}
@@ -128,6 +158,9 @@ export function initAiPanel(deps = {}) {
   const keySave = $('#ai-key-save')
   const keyClear = $('#ai-key-clear')
   const modelSelect = $('#ai-model-select')
+  const contextWindowSelect = $('#ai-context-window')
+  const maxOutputSelect = $('#ai-max-output')
+  const reasoningEffortSelect = $('#ai-reasoning-effort')
   const testConnectionBtn = $('#ai-test-connection')
   const connectionStatusEl = $('#ai-connection-status')
   const settingsStatusEl = $('#ai-settings-status')
@@ -506,6 +539,24 @@ export function initAiPanel(deps = {}) {
       modelSelect.append(el('option', { value: model.id, text: model.label || model.id }))
     }
     modelSelect.value = currentModel()
+  }
+
+  /** 按当前设置回填「上下文窗口 / 最大输出 token / 思考等级」，非法或缺失值回落默认 */
+  function applyGenerationControls() {
+    const settings = currentSettings()
+    if (contextWindowSelect) {
+      contextWindowSelect.value = CONTEXT_WINDOW_OPTIONS.includes(settings.aiContextWindow)
+        ? settings.aiContextWindow
+        : DEFAULT_CONTEXT_WINDOW
+    }
+    if (maxOutputSelect) {
+      maxOutputSelect.value = String(snapOutputTokens(settings.aiMaxOutputTokens))
+    }
+    if (reasoningEffortSelect) {
+      reasoningEffortSelect.value = REASONING_EFFORT_OPTIONS.includes(settings.aiReasoningEffort)
+        ? settings.aiReasoningEffort
+        : DEFAULT_REASONING_EFFORT
+    }
   }
 
   function selectModel(modelId, { persist = true } = {}) {
@@ -1223,8 +1274,17 @@ export function initAiPanel(deps = {}) {
     const request = activeRequest
     if (!request || payload.requestId !== request.requestId) return
     switch (payload.type) {
-      case 'started':
+      case 'started': {
+        // 主进程按上下文窗口裁剪了文档/历史时提示用户，避免误以为全文已发送
+        const meta = payload.meta
+        if (meta && (meta.truncated || Number(meta.droppedMessages) > 0)) {
+          const parts = []
+          if (meta.truncated) parts.push(`当前文档裁剪至 ${Number(meta.contextChars) || 0} 字`)
+          if (Number(meta.droppedMessages) > 0) parts.push(`省略 ${Number(meta.droppedMessages)} 条较早消息`)
+          showToast(`上下文预算：${parts.join('；')}`, 'info')
+        }
         break
+      }
       case 'text_delta':
         request.content += String(payload.delta || '')
         request.message.content = request.content
@@ -1313,6 +1373,7 @@ export function initAiPanel(deps = {}) {
     settingsOverlay.hidden = false
     updateKeyUi()
     renderModelSelect()
+    applyGenerationControls()
     setConnectionStatus('未测试')
     setSettingsStatus('')
     if (keyInput) {
@@ -1470,6 +1531,25 @@ export function initAiPanel(deps = {}) {
     testConnectionBtn?.addEventListener('click', () => void testConnection())
     modelSelect?.addEventListener('change', () => {
       selectModel(modelSelect.value)
+    })
+    contextWindowSelect?.addEventListener('change', () => {
+      const value = CONTEXT_WINDOW_OPTIONS.includes(contextWindowSelect.value)
+        ? contextWindowSelect.value
+        : DEFAULT_CONTEXT_WINDOW
+      contextWindowSelect.value = value
+      deps.persistSettings?.({ aiContextWindow: value })
+    })
+    maxOutputSelect?.addEventListener('change', () => {
+      const value = clampOutputTokens(maxOutputSelect.value)
+      maxOutputSelect.value = String(value)
+      deps.persistSettings?.({ aiMaxOutputTokens: value })
+    })
+    reasoningEffortSelect?.addEventListener('change', () => {
+      const value = REASONING_EFFORT_OPTIONS.includes(reasoningEffortSelect.value)
+        ? reasoningEffortSelect.value
+        : DEFAULT_REASONING_EFFORT
+      reasoningEffortSelect.value = value
+      deps.persistSettings?.({ aiReasoningEffort: value })
     })
     settingsOverlay?.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
@@ -1641,6 +1721,7 @@ export function initAiPanel(deps = {}) {
     updateQuickPrompts()
     renderModelSelect()
     updateModelLabel()
+    applyGenerationControls()
   }
 
   function destroy() {

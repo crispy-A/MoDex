@@ -12,6 +12,10 @@ const VIEW_MODES = ['edit', 'split', 'preview']
 const PREVIEW_STYLES = ['codex', 'github', 'vue', 'notion', 'feishu', 'tailwind', 'serif']
 const AI_MODELS = ['deepseek-flash', 'deepseek-v4-pro']
 const AI_PANEL_MODES = ['closed', 'open', 'rail']
+/** AI 上下文窗口预设（auto = 模型上限）；与 src/main/ai/context-budget.js 保持一致 */
+const AI_CONTEXT_WINDOWS = ['auto', '32k', '64k', '128k', '256k', '512k', '1m']
+/** Responses API reasoning.effort：none 关闭思考，high 为 DeepSeek 官方默认 */
+const AI_REASONING_EFFORTS = ['none', 'low', 'high', 'max']
 const MAX_RECENT = 10
 const MAX_OPEN_FOLDERS = 12
 
@@ -19,6 +23,8 @@ const NUMERIC_LIMITS = {
   sidebarWidth: { min: 180, max: 520, fallback: 260 },
   fontSize: { min: 12, max: 24, fallback: 15 },
   aiPanelWidth: { min: 320, max: 560, fallback: 360 },
+  // DeepSeek 官方单次输出上限 384K token（deepseek-flash / deepseek-v4-pro 一致）
+  aiMaxOutputTokens: { min: 1024, max: 393216, fallback: 8192 },
 }
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -37,6 +43,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   aiPanelWidth: 360,
   aiModel: 'deepseek-flash',
   aiIncludeContext: false,
+  aiContextWindow: '128k',
+  aiMaxOutputTokens: 8192,
+  aiReasoningEffort: 'high',
 })
 
 function isPlainObject(value) {
@@ -99,6 +108,13 @@ function sanitizeSettings(raw) {
     aiModel: AI_MODELS.includes(input.aiModel) ? input.aiModel : DEFAULT_SETTINGS.aiModel,
     aiIncludeContext:
       typeof input.aiIncludeContext === 'boolean' ? input.aiIncludeContext : DEFAULT_SETTINGS.aiIncludeContext,
+    aiContextWindow: AI_CONTEXT_WINDOWS.includes(input.aiContextWindow)
+      ? input.aiContextWindow
+      : DEFAULT_SETTINGS.aiContextWindow,
+    aiMaxOutputTokens: clampNumber(input.aiMaxOutputTokens, NUMERIC_LIMITS.aiMaxOutputTokens),
+    aiReasoningEffort: AI_REASONING_EFFORTS.includes(input.aiReasoningEffort)
+      ? input.aiReasoningEffort
+      : DEFAULT_SETTINGS.aiReasoningEffort,
   }
 }
 
@@ -295,6 +311,8 @@ module.exports = {
   PREVIEW_STYLES,
   AI_MODELS,
   AI_PANEL_MODES,
+  AI_CONTEXT_WINDOWS,
+  AI_REASONING_EFFORTS,
   MAX_RECENT,
   MAX_OPEN_FOLDERS,
   NUMERIC_LIMITS,

@@ -41,7 +41,7 @@ async function makeService(t, fetchImpl, extra = {}) {
     sendToRenderer: (channel, payload) => events.push({ channel, payload }),
     ...extra,
   })
-  return { service, events, dir }
+  return { service, events, dir, store, settings }
 }
 
 function sseText(deltas, { usage = { input_tokens: 12, output_tokens: 34 }, model = 'deepseek-flash' } = {}) {
@@ -121,6 +121,41 @@ test('ai-service：流式回答事件与 completed usage', async (t) => {
   assert.deepEqual(deltas, ['你好', '，MoDex'])
   assert.ok(events.some((item) => item.payload.type === 'started'))
   assert.equal(events[0].channel, 'ai:event')
+})
+
+test('ai-service：bootstrap 下发生成参数与模型官方限制', async (t) => {
+  const { service } = await makeService(t, () => Promise.reject(new Error('no fetch')))
+  const info = await service.bootstrap()
+  assert.equal(info.ok, true)
+  assert.equal(info.settings.contextWindow, DEFAULT_SETTINGS.aiContextWindow)
+  assert.equal(info.settings.maxOutputTokens, DEFAULT_SETTINGS.aiMaxOutputTokens)
+  assert.equal(info.settings.reasoningEffort, DEFAULT_SETTINGS.aiReasoningEffort)
+  const flash = info.models.find((model) => model.id === 'deepseek-flash')
+  assert.equal(flash.contextWindowTokens, 1024 * 1024)
+  assert.equal(flash.maxOutputTokens, 384 * 1024)
+})
+
+test('ai-service：send 使用设置中的上下文窗口/最大输出/思考等级', async (t) => {
+  let captured = null
+  const fetchImpl = async (_url, init) => {
+    captured = JSON.parse(init.body)
+    return sseResponse(sseText(['ok']))
+  }
+  const { service, events, store } = await makeService(t, fetchImpl)
+  await service.setKey(null, { key: 'sk-test-1234567890' })
+  store.updateSettings({ aiContextWindow: '32k', aiMaxOutputTokens: 16384, aiReasoningEffort: 'max' })
+  const result = await service.send(null, {
+    requestId: 'cfg1',
+    model: 'deepseek-flash',
+    messages: [{ role: 'user', content: '你好' }],
+    context: { fileName: 'a.md', content: '文档内容' },
+  })
+  assert.equal(result.ok, true)
+  await waitForEvent(events, (item) => item.payload.requestId === 'cfg1' && item.payload.type === 'completed')
+  assert.equal(captured.max_output_tokens, 16384)
+  assert.deepEqual(captured.reasoning, { effort: 'max' })
+  assert.ok(captured.instructions.includes('<当前文档 name="a.md">'))
+  assert.ok(captured.instructions.includes('文档内容'))
 })
 
 test('ai-service：HTTP 429 映射为 RATE_LIMIT', async (t) => {

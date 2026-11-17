@@ -22,11 +22,15 @@ aiPanelMode: 'closed' | 'open' | 'rail'   // 默认 'closed'
 aiPanelWidth: number                       // 默认 360，clamp 320..560
 aiModel: 'deepseek-flash' | 'deepseek-v4-pro'  // 默认 'deepseek-flash'
 aiIncludeContext: boolean                  // 默认 false（文档上下文开关）
+// v1.1 生成参数（数值口径见 §3.10）
+aiContextWindow: 'auto' | '32k' | '64k' | '128k' | '256k' | '512k' | '1m'  // 输入预算，默认 '128k'
+aiMaxOutputTokens: number                  // 1024..393216，默认 8192（官方上限 384K）
+aiReasoningEffort: 'none' | 'low' | 'high' | 'max'  // 默认 'high'（官方默认；none 关闭思考）
 ```
 
-- 清洗规则：非法值回落默认；`aiPanelWidth` clamp。
+- 清洗规则：非法值回落默认；`aiPanelWidth`、`aiMaxOutputTokens` clamp；枚举字段（含 `aiContextWindow` / `aiReasoningEffort`）不在白名单时回落默认。
 - `state-store.js` 导出 `AI_MODELS` 常量（与 provider 注册表一致，供测试与渲染层默认值参考）。
-- 渲染层 `DEFAULT_SETTINGS` 同步这 4 个字段（由 `renderer-dev` 改）。
+- 渲染层 `DEFAULT_SETTINGS` 同步上述 AI 字段（v1 的 4 个 + v1.1 的 3 个，共 7 个）。
 
 ## 3. 主进程 AI 层
 
@@ -51,13 +55,16 @@ PROVIDER = {
   baseUrl: 'https://api.deepseek.com',   // cli --ai-base-url 或 env MODEX_AI_BASE_URL 可覆盖（仅测试/开发）
   auth: 'bearer',
   models: [
-    { id: 'deepseek-flash',  label: 'DeepSeek Flash',  description: '快速、通用', capabilities: ['reasoning','vision'] },
-    { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', description: '更强推理，支持工具/联网（后续开放）', capabilities: ['reasoning','tools','web_search'] },
+    { id: 'deepseek-flash',  label: 'DeepSeek Flash',  description: '快速、通用', capabilities: ['reasoning','vision'],
+      contextWindowTokens: 1048576, maxOutputTokens: 393216 },   // 官方 1M / 384K
+    { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', description: '更强推理，支持工具/联网（后续开放）', capabilities: ['reasoning','tools','web_search'],
+      contextWindowTokens: 1048576, maxOutputTokens: 393216 },
   ],
   defaultModel: 'deepseek-flash',
 }
 SYSTEM_INSTRUCTIONS = '你是 MoDex 的写作助手，帮助用户撰写、润色、总结与结构化 Markdown 文档；回答简洁、直接、可操作；输出 Markdown。'
-CONTEXT_LIMIT = 20000   // 当前文档上下文字符上限（超出截断并在 UI 提示）
+CONTEXT_LIMIT = 20000   // v1 遗留：buildInstructions 直接调用时的默认文档字符上限；
+                        // v1.1 起实际文档上限由 context-budget 按上下文窗口计算（见 §3.10）
 ```
 
 ### 3.3 Responses API 请求
@@ -70,21 +77,22 @@ Content-Type: application/json
 {
   model,
   instructions: SYSTEM_INSTRUCTIONS (+ 文档上下文块),
-  input: messages.map(({ role, content }) => ({ role, content })),   // 完整历史，stateless
+  input: messages.map(({ role, content }) => ({ role, content })),   // 按上下文预算裁剪后的历史，stateless
   stream: true,
-  max_output_tokens: 2048
+  max_output_tokens: <settings.aiMaxOutputTokens 经窗口/官方上限 clamp>,
+  reasoning: { effort: <settings.aiReasoningEffort> }                 // v1.1：思考等级
 }
 ```
 
-- 文档上下文追加在 instructions 末尾：
+- 文档上下文追加在 instructions 末尾（v1.1 起字符上限由上下文预算计算，不再固定 20000）：
 
 ```
 <当前文档 name="示例.md">
-...最多 20000 字符...
+...受上下文预算约束...
 </当前文档>
 ```
 
-- 请求丢弃 `reasoning` 字段（v1 不展示/不设置 effort，保留后续扩展）。
+- v1.1 起发送 `reasoning`（`none/low/high/max`）；v1 曾丢弃该字段，本版已按官方 Responses API 支持范围启用，思考内容仍通过 `response.reasoning_text.delta` 展示。
 
 ### 3.4 SSE 解析与事件归一化
 
@@ -100,7 +108,7 @@ Content-Type: application/json
 | `response.failed` | `failed` | `error:{code,message,retryable,status}` |
 | `response.created` / 其它 | 忽略（首个事件只用于标记 started） |
 
-- 另发送：`started`（请求真正开始）、`cancelled`（用户取消）、`failed`（HTTP/网络/超时）。
+- 另发送：`started`（请求真正开始，携带预算 meta）、`cancelled`（用户取消）、`failed`（HTTP/网络/超时）。
 - 事件 payload 统一：`{ requestId, type, ... }`；`usage` 缺失时按 0 处理。
 
 ### 3.5 错误归一化（code / message / retryable）
@@ -159,7 +167,7 @@ Content-Type: application/json
 
 | channel | 入参 | 返回 |
 | --- | --- | --- |
-| `ai:bootstrap` | — | `{ ok, provider:{id,name}, models:[{id,label,description,capabilities}], defaultModel, settings:{model,panelMode,panelWidth,includeContext}, hasKey, maskedKey }` |
+| `ai:bootstrap` | — | `{ ok, provider:{id,name}, models:[{id,label,description,capabilities,contextWindowTokens,maxOutputTokens}], defaultModel, settings:{model,panelMode,panelWidth,includeContext,contextWindow,maxOutputTokens,reasoningEffort}, hasKey, maskedKey }` |
 | `ai:send` | `{ requestId, model, messages:[{role,content}] }` | `{ ok:true }` 或 `{ ok:false, error }`；开始后事件流推送 |
 | `ai:cancel` | `{ requestId }` | `{ ok:true, cancelled:boolean }` |
 | `ai:set-key` | `{ key }` | `{ ok:true, hasKey:true, maskedKey }` 或 `{ ok:false, error }` |
@@ -173,7 +181,7 @@ Content-Type: application/json
 主 → 渲染（`webContents.send('ai:event', payload)`）：
 
 ```ts
-{ requestId, type:'started' }
+{ requestId, type:'started', meta?: { contextChars, truncated, droppedMessages, messageTruncated, windowTokens, maxOutputTokens, reasoningEffort, estimatedInputTokens } }
 { requestId, type:'text_delta', delta:string }
 { requestId, type:'reasoning_delta', delta:string }
 { requestId, type:'completed', usage:{input,output,total}, durationMs:number }
@@ -205,6 +213,50 @@ ai: {
   onEvent: (cb) => subscribe('ai:event', cb),
 }
 ```
+
+### 3.10 生成参数配置（v1.1）
+
+#### 官方数值（DeepSeek API Docs，2026-11）
+
+| 项 | deepseek-flash | deepseek-v4-pro | 说明 |
+| --- | --- | --- | --- |
+| 上下文长度 | 1M（1048576） | 1M（1048576） | 输入与输出共享 |
+| 输出长度 | 最大 384K（393216） | 最大 384K | 含思考内容 token |
+| 思考模式 | 支持，默认开启 | 支持，默认开启 | `reasoning.effort` 默认 `high` |
+| effort 取值 | `none` / `low` / `high` / `max` | 同上 | `none` 表示关闭思考；官方映射 medium→high、xhigh→high、max/ultra→max |
+| token 估算 | 中文 ≈0.6 token/字，英文等 ≈0.3 token/字符 | 同上 | 官方「Token 用量计算」页口径 |
+| 计费 | 输出 4–8 元/百万 token | 输出 13.5–27 元/百万 token | 空闲/高峰不同价，不参与本实现 |
+
+#### 设置项与 UI 预设
+
+| 设置 | UI 预设 | 默认 | 语义 |
+| --- | --- | --- | --- |
+| `aiContextWindow` | 自动（1M）/ 32K / 64K / 128K / 256K / 512K / 1M | **128K** | 输入预算（历史 + 文档）；`auto` = 模型上限 |
+| `aiMaxOutputTokens` | 4K / 8K / 16K / 32K / 64K / 128K / 384K（上限） | **8K** | 单次输出上限（含思考） |
+| `aiReasoningEffort` | 关闭（none）/ 低（low）/ 高（high，默认）/ 最高（max） | **high** | 思考等级 |
+
+#### 预算换算（`src/main/ai/context-budget.js`，纯函数）
+
+```
+window    = max(10944, min(预设 ?, 模型上限))                // auto → 模型上限；10944 = 1K+4K+1K floor
+maxOutput = clamp(设置, 1024, min(模型上限, window - 4096 - 1024))
+available = max(1024, window - maxOutput - 4096)             // 4096 = 估算误差预留
+content   = max(0, available - estimate(SYSTEM_INSTRUCTIONS) - 128)   // 128 = 文档包裹/文件名预留
+docChars  = content>0 ? min(文档长度, floor(content * 50% / 0.6)) : 0
+history   = 从最旧开始丢弃消息，直到 estimate ≤ max(0, content - docTokens)；至少保留最后一条
+```
+
+- 估算比例：中文 0.6 token/字、其它 0.3 token/字符（官方口径，取值偏保守，可覆盖混合文本）。
+- 不变量：任意「窗口 × 输出档位」组合下 `estimatedInputTokens + maxOutputTokens + SAFETY_TOKENS ≤ windowTokens`（`tests/ai-context-budget.test.mjs` 全组合断言），因此请求不会超出所选窗口。
+- 既有硬上限仍生效：单次 `context` 内容 ≤50 万字符（`ai-service.js` 归一化上限）、`messages` 总字符 ≤40 万（§3.8），因此 1M 窗口下的实际文档字符上限为 50 万（不会达到公式算出的约 86.35 万）。
+- 若仅剩最后一条消息仍超预算，则按字符预算截断其内容并预留 4 token 角色开销（`meta.messageTruncated = true`）。
+- 设置由主进程在 `ai:send` 时读取；渲染层不传这些字段（防伪造，重启后沿用设置）。
+- 未传参数时（如旧调用/单测）按 `auto` / 8192 / `high` 兜底；非法窗口值回落默认 `128k`（避免手改配置静默放大预算）。
+- 请求 meta 记录 `windowTokens / maxOutputTokens / reasoningEffort / droppedMessages / messageTruncated / estimatedInputTokens`；`ai:event` 的 `started` 事件携带同一份 meta，渲染层据此提示裁剪，主进程也用它排查 400 与费用问题。
+
+#### 单测
+
+`tests/ai-context-budget.test.mjs`（token 估算、窗口/输出限额、effort 回落、消息裁剪、planInput）与 `tests/ai-responses.test.mjs`（请求体字段、预算截断）、`tests/ai-service.test.mjs`（bootstrap 下发、send 读取设置）。
 
 ## 4. 渲染层 UI 契约（renderer-dev 实现）
 
@@ -240,6 +292,9 @@ ai: {
   #ai-key-save              保存并验证
   #ai-key-clear             清除密钥（无 Key 时 hidden）
   #ai-model-select          <select>（deepseek-flash / deepseek-v4-pro）
+  #ai-context-window        <select>：auto/32k/64k/128k/256k/512k/1m（上下文窗口，默认 128k）
+  #ai-max-output            <select>：4096/8192/16384/32768/65536/131072/393216（最大输出 token）
+  #ai-reasoning-effort      <select>：none/low/high/max（思考等级，默认 high）
   #ai-test-connection      测试连接
   #ai-connection-status    状态行文本（未测试/测试中/成功 xx ms/失败原因）
   #ai-settings-close       关闭
@@ -269,7 +324,8 @@ ai: {
 ai:send({ requestId, model, messages, context?: { fileName, content } })
 ```
 
-主进程把 context 转为 instructions 里的 `<当前文档>` 块并截断 20k 字符。（§3.3 已按此实现；`ai:send` 校验允许 `context` 可选。）
+主进程把 context 转为 instructions 里的 `<当前文档>` 块，并按上下文窗口预算截断（见 §3.10；v1 曾固定 20k 字符）。（`ai:send` 校验允许 `context` 可选。）
+- 裁剪提示：`started` 事件携带 `meta`；当文档或历史被上下文预算裁剪时，面板 toast 提示「上下文预算：当前文档裁剪至 N 字；省略 M 条较早消息」，避免用户误以为全文已发送。
 - 发送流程：无 Key → toast + 打开设置，不发送；发送后清空输入、禁用发送、显示 stop；收到 `started` 后创建 assistant 占位消息；`text_delta` 追加渲染（节流 30–60ms）、`reasoning_delta` 追加折叠区；`completed` 写 usage 行、恢复输入；`failed` 显示错误卡片（带重试按钮，重试用相同 messages）；`cancelled` 标记「已停止」。
 - 会话：首次发送自动创建会话（title 取首条用户消息前 24 字）；每轮结束（completed/failed/cancelled）调用 `api.ai.saveSession(session)`；新对话先取消生成再清空；历史弹层恢复会话（把 messages 渲染出来）；删除会话调 `api.ai.deleteSession` 并刷新。
 - 渲染安全：assistant 内容走 `renderMarkdown`（已禁原始 HTML）；user 内容用 `textContent`，绝不 innerHTML。
@@ -319,10 +375,11 @@ ai:send({ requestId, model, messages, context?: { fileName, content } })
 ### 5.3 单测（Lead，`tests/`）
 
 - `ai-sse.test.mjs`：分片/多行 data/注释/CRLF/坏 JSON/连续事件/EOF flush。
-- `ai-responses.test.mjs`：buildRequest（instructions 上下文块、20k 截断、messages 序列化）、normalizeEvent（6 类事件+未知）、normalizeError（9 种场景）。
+- `ai-context-budget.test.mjs`：token 估算、窗口/输出限额换算、effort 回落、消息裁剪、planInput 预算。
+- `ai-responses.test.mjs`：buildRequest（instructions 上下文块、上下文预算截断、max_output_tokens、reasoning.effort、消息裁剪）、normalizeEvent（6 类事件+未知）、normalizeError（9 种场景）。
 - `ai-store.test.mjs`：保存/读取/删除、排序、上限淘汰、非法 id 拒绝、原子写。
 - `ai-credentials.test.mjs`：注入 stub crypto，set/get/clear/mask/损坏文件处理。
-- `state-store.test.mjs`：新增 4 字段清洗与默认值。
+- `state-store.test.mjs`：新增 7 个字段（v1 的 4 个 + v1.1 的 3 个）清洗与默认值。
 
 ## 6. 工作拆分
 

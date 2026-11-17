@@ -85,6 +85,11 @@ interface Settings {
   aiPanelWidth: number                       // 320–560，默认 360
   aiModel: 'deepseek-flash' | 'deepseek-v4-pro'   // 默认 deepseek-flash
   aiIncludeContext: boolean                  // 发送时附带当前文档，默认 false
+  aiContextWindow: 'auto' | '32k' | '64k' | '128k' | '256k' | '512k' | '1m'
+                                             // 输入预算（对话历史 + 当前文档），默认 '128k'；auto = 模型上限
+  aiMaxOutputTokens: number                  // 最大输出 token（含思考内容），1024–393216，默认 8192
+  aiReasoningEffort: 'none' | 'low' | 'high' | 'max'
+                                             // 思考等级（Responses API reasoning.effort），默认 'high'；none = 关闭思考
 }
 
 window.api = {
@@ -143,7 +148,7 @@ window.api = {
       requestId: string
       model: 'deepseek-flash' | 'deepseek-v4-pro'
       messages: Array<{ role: 'user' | 'assistant', content: string }>
-      context?: { fileName: string, content: string }   // 由主进程拼进 instructions 并截断 20k 字符
+      context?: { fileName: string, content: string }   // 由主进程拼进 instructions，并按上下文窗口预算截断（见 §AI 生成参数）
     }): Promise<{ ok: true } | { ok: false, error: AiError }>
     cancel(requestId: string): Promise<{ ok: true, cancelled: boolean }>
     setKey(key: string): Promise<{ ok: true, hasKey: true, maskedKey: string } | { ok: false, error: AiError }>
@@ -159,9 +164,21 @@ window.api = {
   interface AiBootstrap {
     ok: true
     provider: { id: 'deepseek', name: 'DeepSeek' }
-    models: Array<{ id: string, label: string, description: string, capabilities: string[] }>
+    models: Array<{
+      id: string, label: string, description: string, capabilities: string[],
+      contextWindowTokens: number,             // 官方上下文上限：1048576（1M）
+      maxOutputTokens: number                  // 官方单次输出上限：393216（384K）
+    }>
     defaultModel: string
-    settings: { model: string, panelMode: 'closed'|'open'|'rail', panelWidth: number, includeContext: boolean }
+    settings: {
+      model: string,
+      panelMode: 'closed'|'open'|'rail',
+      panelWidth: number,
+      includeContext: boolean,
+      contextWindow: Settings['aiContextWindow'],
+      maxOutputTokens: number,
+      reasoningEffort: Settings['aiReasoningEffort'],
+    }
     hasKey: boolean
     maskedKey: string          // 形如 '••••••••abcd'；不含明文
   }
@@ -169,7 +186,10 @@ window.api = {
   interface AiError { code: string, message: string, retryable: boolean, status?: number, detail?: string }
 
   type AiEvent =
-    | { requestId: string, type: 'started' }
+    | { requestId: string, type: 'started', meta?: {
+        contextChars: number, truncated: boolean, droppedMessages: number, messageTruncated: boolean,
+        windowTokens: number, maxOutputTokens: number, reasoningEffort: string, estimatedInputTokens: number,
+      } }   // meta 仅含预算/裁剪统计，不含文档内容
     | { requestId: string, type: 'text_delta', delta: string }
     | { requestId: string, type: 'reasoning_delta', delta: string }
     | { requestId: string, type: 'completed', usage: { input: number, output: number, total: number }, durationMs: number }
@@ -209,6 +229,12 @@ type MenuAction =
 
 > 自动保存语义见 `docs/AUTOSAVE-SPEC.md`：切换文件/新建/关闭文档/关闭软件时都会自动保存；
 > `confirmUnsaved` 仅保留给「删除当前文件」这一破坏性确认路径。
+
+### AI 生成参数（上下文窗口 / 最大输出 / 思考等级）
+
+- 三个参数属于 `Settings`，在 `ai:send` 时由**主进程**读取并换算进 Responses 请求体；渲染层不随请求传这些值（防伪造，也保证重启后续用）。
+- 官方口径（DeepSeek，`deepseek-flash` / `deepseek-v4-pro` 一致）：上下文 **1M** token、单次输出上限 **384K** token、思考模式默认开启且 `reasoning.effort` 默认 `high`（`none` 关闭思考）。
+- 上下文窗口是**输入预算**（对话历史 + 当前文档），不是固定的模型参数；当估算输入超出预算时，主进程按「文档最多占可用输入预算的 50%、历史消息从最旧开始丢弃、至少保留最后一条」裁剪，token 估算采用官方比例（中文 0.6 token/字、英文等 0.3 token/字符）。细节见 `docs/AI-PANEL-SPEC.md` §3.10。
 
 ## 3. 按钮 → 动作（渲染层内部动作名，供 e2e 钩子与菜单共用）
 

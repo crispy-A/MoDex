@@ -12,7 +12,7 @@ import {
   normalizeHttpError,
   normalizeNetworkError,
 } from '../src/main/ai/responses-client.js'
-import { CONTEXT_LIMIT } from '../src/main/ai/provider-registry.js'
+import { CONTEXT_LIMIT, MODEL_MAX_OUTPUT_TOKENS } from '../src/main/ai/provider-registry.js'
 
 test('buildResponsesRequest：URL/headers/body 基本结构', () => {
   const request = buildResponsesRequest({
@@ -35,14 +35,67 @@ test('buildResponsesRequest：URL/headers/body 基本结构', () => {
   assert.equal(request.meta.truncated, false)
 })
 
-test('buildResponsesRequest：上下文进入 instructions 且超长截断', () => {
+test('buildResponsesRequest：默认窗口（auto）下文档上下文不再按 20k 截断', () => {
   const context = { fileName: '示例.md', content: 'A'.repeat(CONTEXT_LIMIT + 500) }
   const request = buildResponsesRequest({ baseUrl: 'https://api.deepseek.com', model: 'deepseek-v4-pro', messages: [{ role: 'user', content: '总结' }], context })
   assert.ok(request.body.instructions.includes('<当前文档 name="示例.md">'))
-  assert.ok(request.body.instructions.includes('A'.repeat(CONTEXT_LIMIT)))
-  assert.ok(!request.body.instructions.includes('A'.repeat(CONTEXT_LIMIT + 1)))
+  assert.ok(request.body.instructions.includes('A'.repeat(CONTEXT_LIMIT + 500)))
+  assert.equal(request.meta.truncated, false)
+  assert.equal(request.meta.contextChars, CONTEXT_LIMIT + 500)
+  assert.equal(request.meta.windowTokens, 1024 * 1024)
+  assert.equal(request.meta.maxOutputTokens, 8192)
+})
+
+test('buildResponsesRequest：小窗口（32k）+ 4K 输出时文档按预算截断', () => {
+  const context = { fileName: '示例.md', content: 'A'.repeat(30000) }
+  const request = buildResponsesRequest({
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-v4-pro',
+    messages: [{ role: 'user', content: '总结' }],
+    context,
+    contextWindow: '32k',
+    maxOutputTokens: 4096,
+  })
+  assert.equal(request.body.max_output_tokens, 4096)
+  assert.equal(request.meta.windowTokens, 32 * 1024)
   assert.equal(request.meta.truncated, true)
-  assert.equal(request.meta.contextChars, CONTEXT_LIMIT)
+  assert.ok(request.meta.contextChars > 0 && request.meta.contextChars < 30000)
+  assert.ok(request.body.instructions.includes('A'.repeat(request.meta.contextChars)))
+  assert.ok(!request.body.instructions.includes('A'.repeat(request.meta.contextChars + 1)))
+})
+
+test('buildResponsesRequest：最大输出 token 预设与官方上限', () => {
+  const base = { baseUrl: 'https://x', model: 'deepseek-flash', messages: [{ role: 'user', content: 'hi' }] }
+  assert.equal(buildResponsesRequest(base).body.max_output_tokens, 8192)
+  assert.equal(buildResponsesRequest({ ...base, maxOutputTokens: 16384 }).body.max_output_tokens, 16384)
+  assert.equal(buildResponsesRequest({ ...base, maxOutputTokens: 999999 }).body.max_output_tokens, MODEL_MAX_OUTPUT_TOKENS)
+  assert.equal(buildResponsesRequest({ ...base, maxOutputTokens: 1 }).body.max_output_tokens, 1024)
+})
+
+test('buildResponsesRequest：reasoning.effort 默认 high，支持 none/low/max', () => {
+  const base = { baseUrl: 'https://x', model: 'deepseek-flash', messages: [{ role: 'user', content: 'hi' }] }
+  assert.deepEqual(buildResponsesRequest(base).body.reasoning, { effort: 'high' })
+  assert.deepEqual(buildResponsesRequest({ ...base, reasoningEffort: 'none' }).body.reasoning, { effort: 'none' })
+  assert.deepEqual(buildResponsesRequest({ ...base, reasoningEffort: 'max' }).body.reasoning, { effort: 'max' })
+  assert.deepEqual(buildResponsesRequest({ ...base, reasoningEffort: 'ultra' }).body.reasoning, { effort: 'high' })
+})
+
+test('buildResponsesRequest：窗口不足时按最旧优先裁剪历史消息', () => {
+  const messages = Array.from({ length: 60 }, (_, index) => ({
+    role: index % 2 === 0 ? 'user' : 'assistant',
+    content: '中'.repeat(400),
+  }))
+  const request = buildResponsesRequest({
+    baseUrl: 'https://x',
+    model: 'deepseek-flash',
+    messages,
+    contextWindow: '32k',
+    maxOutputTokens: 16384,
+  })
+  assert.ok(request.body.input.length < 60)
+  assert.ok(request.meta.droppedMessages > 0)
+  assert.equal(request.body.input[0].role, 'user')
+  assert.equal(request.body.input[request.body.input.length - 1].content, messages[messages.length - 1].content)
 })
 
 test('buildResponsesRequest：无 context 不注入文档块', () => {

@@ -23,6 +23,8 @@ import {
   PREVIEW_STYLES,
   AI_MODELS,
   AI_PANEL_MODES,
+  AI_CONTEXT_WINDOWS,
+  AI_REASONING_EFFORTS,
 } from '../src/main/state-store.js'
 
 const fsp = fs.promises
@@ -190,11 +192,32 @@ test('sanitizeSettings：AI 面板字段默认值、枚举与宽度 clamp', () =
   assert.equal(sanitizeSettings({ aiPanelWidth: 400 }).aiPanelWidth, 400)
 })
 
+test('sanitizeSettings：AI 生成参数（上下文窗口/最大输出/思考等级）默认值与清洗', () => {
+  const defaults = sanitizeSettings({})
+  assert.equal(defaults.aiContextWindow, '128k')
+  assert.equal(defaults.aiMaxOutputTokens, 8192)
+  assert.equal(defaults.aiReasoningEffort, 'high')
+
+  for (const window of AI_CONTEXT_WINDOWS) {
+    assert.equal(sanitizeSettings({ aiContextWindow: window }).aiContextWindow, window)
+  }
+  for (const effort of AI_REASONING_EFFORTS) {
+    assert.equal(sanitizeSettings({ aiReasoningEffort: effort }).aiReasoningEffort, effort)
+  }
+  assert.equal(sanitizeSettings({ aiContextWindow: '2m' }).aiContextWindow, '128k')
+  assert.equal(sanitizeSettings({ aiReasoningEffort: 'ultra' }).aiReasoningEffort, 'high')
+  assert.equal(sanitizeSettings({ aiMaxOutputTokens: 999999 }).aiMaxOutputTokens, 393216)
+  assert.equal(sanitizeSettings({ aiMaxOutputTokens: 1 }).aiMaxOutputTokens, 1024)
+  assert.equal(sanitizeSettings({ aiMaxOutputTokens: 16384.6 }).aiMaxOutputTokens, 16385)
+  assert.equal(sanitizeSettings({ aiMaxOutputTokens: 'abc' }).aiMaxOutputTokens, 8192)
+})
+
 test('StateStore：AI 设置持久化', async (t) => {
   const file = await makeTempFile(t)
   const store = new StateStore(file)
   store.load()
   store.updateSettings({ aiPanelMode: 'open', aiPanelWidth: 420, aiModel: 'deepseek-v4-pro', aiIncludeContext: true })
+  store.updateSettings({ aiContextWindow: '256k', aiMaxOutputTokens: 32768, aiReasoningEffort: 'max' })
   const reloaded = new StateStore(file)
   reloaded.load()
   const settings = reloaded.getSettings()
@@ -202,6 +225,9 @@ test('StateStore：AI 设置持久化', async (t) => {
   assert.equal(settings.aiPanelWidth, 420)
   assert.equal(settings.aiModel, 'deepseek-v4-pro')
   assert.equal(settings.aiIncludeContext, true)
+  assert.equal(settings.aiContextWindow, '256k')
+  assert.equal(settings.aiMaxOutputTokens, 32768)
+  assert.equal(settings.aiReasoningEffort, 'max')
 })
 
 test('StateStore：首次加载使用默认值，更新后持久化', async (t) => {
