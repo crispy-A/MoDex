@@ -22,5 +22,8 @@
     "electron": "40.10.2",
     "rcedit": "^5.0.2",
     "sharp": "^0.35.5"
+  },
+  "allowScripts": {
+    "electron@40.10.2": true
   }
 }
