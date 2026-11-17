@@ -8,25 +8,19 @@
  * - 数值口径见 docs/AI-PANEL-SPEC.md §3.10；模型上限以 provider-registry 字段为准
  */
 const { SYSTEM_INSTRUCTIONS, MODEL_CONTEXT_WINDOW_TOKENS, MODEL_MAX_OUTPUT_TOKENS } = require('./provider-registry.js')
+const {
+  CONTEXT_WINDOW_PRESETS,
+  CONTEXT_WINDOW_IDS,
+  DEFAULT_CONTEXT_WINDOW,
+  REASONING_EFFORTS,
+  DEFAULT_REASONING_EFFORT,
+  DEFAULT_MAX_OUTPUT_TOKENS,
+  MIN_OUTPUT_TOKENS,
+} = require('./ai-options.js')
 
-/** 上下文窗口预设 id → token 数；auto 表示交给模型自身的上下文上限 */
-const CONTEXT_WINDOW_PRESETS = Object.freeze({
-  auto: null,
-  '32k': 32 * 1024,
-  '64k': 64 * 1024,
-  '128k': 128 * 1024,
-  '256k': 256 * 1024,
-  '512k': 512 * 1024,
-  '1m': 1024 * 1024,
-})
-const CONTEXT_WINDOW_IDS = Object.freeze(Object.keys(CONTEXT_WINDOW_PRESETS))
-const REASONING_EFFORTS = Object.freeze(['none', 'low', 'high', 'max'])
-const DEFAULT_REASONING_EFFORT = 'high'
 /** 模型字段缺失时的兜底（与 DeepSeek 官方数值一致：1M 上下文 / 384K 输出） */
 const DEFAULT_MODEL_CONTEXT_TOKENS = MODEL_CONTEXT_WINDOW_TOKENS
 const DEFAULT_MODEL_OUTPUT_TOKENS = MODEL_MAX_OUTPUT_TOKENS
-const DEFAULT_MAX_OUTPUT_TOKENS = 8192
-const MIN_OUTPUT_TOKENS = 1024
 const MIN_INPUT_TOKENS = 1024
 /** 输入预算预留：估算误差 + 分帧/角色等请求开销 */
 const SAFETY_TOKENS = 4096
@@ -41,7 +35,7 @@ const CJK_PATTERN = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00
  */
 const FRAMING_TOKENS = 128
 /** 非法窗口设置回落值（仅「未传」按 auto 处理，避免手改配置静默放大预算） */
-const DEFAULT_CONTEXT_WINDOW_SETTING = '128k'
+const DEFAULT_CONTEXT_WINDOW_SETTING = DEFAULT_CONTEXT_WINDOW
 
 function positiveInt(value) {
   const num = Number(value)

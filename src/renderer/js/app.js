@@ -26,6 +26,15 @@ import { initPreview } from './preview.js'
 import { initTree } from './tree.js'
 import { initAiPanel } from './ai-panel.js'
 import { createLoadGuard } from './load-guard.js'
+import {
+  CONTEXT_WINDOW_IDS,
+  REASONING_EFFORTS,
+  DEFAULT_CONTEXT_WINDOW,
+  DEFAULT_MAX_OUTPUT_TOKENS,
+  DEFAULT_REASONING_EFFORT,
+  MIN_OUTPUT_TOKENS,
+  MAX_OUTPUT_TOKENS,
+} from './ai-options.js'
 
 const api = typeof window !== 'undefined' ? window.api : undefined
 
@@ -45,9 +54,9 @@ const DEFAULT_SETTINGS = {
   aiPanelWidth: 360,
   aiModel: 'deepseek-flash',
   aiIncludeContext: false,
-  aiContextWindow: '128k',
-  aiMaxOutputTokens: 8192,
-  aiReasoningEffort: 'high',
+  aiContextWindow: DEFAULT_CONTEXT_WINDOW,
+  aiMaxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+  aiReasoningEffort: DEFAULT_REASONING_EFFORT,
 }
 const MAX_ROOTS = 12
 const VIEW_NAMES = { edit: '编辑', split: '分栏', preview: '预览' }
@@ -86,12 +95,12 @@ const PREVIEW_STYLE_IDS = new Set(PREVIEW_STYLE_OPTIONS.map((option) => option.i
 /** AI 模型 id（与主进程 provider-registry 保持一致，仅用于渲染层清洗/兜底） */
 const AI_MODEL_IDS = new Set(['deepseek-flash', 'deepseek-v4-pro'])
 const AI_PANEL_MODES = new Set(['closed', 'open', 'rail'])
-/** AI 生成参数枚举/范围（与主进程 settings 契约保持一致，仅用于渲染层清洗/兜底） */
-const AI_CONTEXT_WINDOW_IDS = new Set(['auto', '32k', '64k', '128k', '256k', '512k', '1m'])
-const AI_REASONING_EFFORT_IDS = new Set(['none', 'low', 'high', 'max'])
-const AI_MAX_OUTPUT_TOKENS_MIN = 1024
-const AI_MAX_OUTPUT_TOKENS_MAX = 393216
-const AI_MAX_OUTPUT_TOKENS_DEFAULT = 8192
+/** AI 生成参数枚举/范围：单一来源 ai-options.js，与主进程由契约测试对齐 */
+const AI_CONTEXT_WINDOW_IDS = new Set(CONTEXT_WINDOW_IDS)
+const AI_REASONING_EFFORT_IDS = new Set(REASONING_EFFORTS)
+const AI_MAX_OUTPUT_TOKENS_MIN = MIN_OUTPUT_TOKENS
+const AI_MAX_OUTPUT_TOKENS_MAX = MAX_OUTPUT_TOKENS
+const AI_MAX_OUTPUT_TOKENS_DEFAULT = DEFAULT_MAX_OUTPUT_TOKENS
 
 /**
  * 应用菜单定义（单条导航栏，内容与原生菜单一一对应，不新增功能）。

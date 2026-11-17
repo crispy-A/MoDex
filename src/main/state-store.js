@@ -12,10 +12,15 @@ const VIEW_MODES = ['edit', 'split', 'preview']
 const PREVIEW_STYLES = ['codex', 'github', 'vue', 'notion', 'feishu', 'tailwind', 'serif']
 const AI_MODELS = ['deepseek-flash', 'deepseek-v4-pro']
 const AI_PANEL_MODES = ['closed', 'open', 'rail']
-/** AI 上下文窗口预设（auto = 模型上限）；与 src/main/ai/context-budget.js 保持一致 */
-const AI_CONTEXT_WINDOWS = ['auto', '32k', '64k', '128k', '256k', '512k', '1m']
-/** Responses API reasoning.effort：none 关闭思考，high 为 DeepSeek 官方默认 */
-const AI_REASONING_EFFORTS = ['none', 'low', 'high', 'max']
+const {
+  CONTEXT_WINDOW_IDS: AI_CONTEXT_WINDOWS,
+  REASONING_EFFORTS: AI_REASONING_EFFORTS,
+  DEFAULT_CONTEXT_WINDOW,
+  DEFAULT_REASONING_EFFORT,
+  DEFAULT_MAX_OUTPUT_TOKENS,
+  MIN_OUTPUT_TOKENS,
+  MAX_OUTPUT_TOKENS,
+} = require('./ai/ai-options.js')
 const MAX_RECENT = 10
 const MAX_OPEN_FOLDERS = 12
 
@@ -24,7 +29,7 @@ const NUMERIC_LIMITS = {
   fontSize: { min: 12, max: 24, fallback: 15 },
   aiPanelWidth: { min: 320, max: 560, fallback: 360 },
   // DeepSeek 官方单次输出上限 384K token（deepseek-flash / deepseek-v4-pro 一致）
-  aiMaxOutputTokens: { min: 1024, max: 393216, fallback: 8192 },
+  aiMaxOutputTokens: { min: MIN_OUTPUT_TOKENS, max: MAX_OUTPUT_TOKENS, fallback: DEFAULT_MAX_OUTPUT_TOKENS },
 }
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -43,9 +48,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   aiPanelWidth: 360,
   aiModel: 'deepseek-flash',
   aiIncludeContext: false,
-  aiContextWindow: '128k',
-  aiMaxOutputTokens: 8192,
-  aiReasoningEffort: 'high',
+  aiContextWindow: DEFAULT_CONTEXT_WINDOW,
+  aiMaxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+  aiReasoningEffort: DEFAULT_REASONING_EFFORT,
 })
 
 function isPlainObject(value) {

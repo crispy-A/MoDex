@@ -11,6 +11,16 @@
 import { $, $$, el, clamp, copyText, makeDragResizer } from './util.js'
 import { icons } from './icons.js'
 import { renderMarkdown } from './markdown.js'
+import {
+  CONTEXT_WINDOW_IDS as CONTEXT_WINDOW_OPTIONS,
+  OUTPUT_TOKEN_PRESETS as MAX_OUTPUT_TOKEN_OPTIONS,
+  REASONING_EFFORTS as REASONING_EFFORT_OPTIONS,
+  DEFAULT_CONTEXT_WINDOW,
+  DEFAULT_MAX_OUTPUT_TOKENS,
+  DEFAULT_REASONING_EFFORT,
+  MIN_OUTPUT_TOKENS,
+  MAX_OUTPUT_TOKENS,
+} from './ai-options.js'
 
 const FALLBACK_MODELS = [
   {
@@ -36,19 +46,6 @@ const MAX_PANEL_WIDTH = 560
 const DEFAULT_PANEL_WIDTH = 360
 const TITLE_LIMIT = 24
 const STREAM_RENDER_INTERVAL = 50
-
-/**
- * AI 生成参数（上下文窗口 / 最大输出 token / 思考等级）。
- * 与主进程 settings 契约保持一致：这里只用于渲染层回填与兜底，不参与 ai:send payload。
- */
-const CONTEXT_WINDOW_OPTIONS = ['auto', '32k', '64k', '128k', '256k', '512k', '1m']
-const MAX_OUTPUT_TOKEN_OPTIONS = [4096, 8192, 16384, 32768, 65536, 131072, 393216]
-const REASONING_EFFORT_OPTIONS = ['none', 'low', 'high', 'max']
-const DEFAULT_CONTEXT_WINDOW = '128k'
-const DEFAULT_MAX_OUTPUT_TOKENS = 8192
-const DEFAULT_REASONING_EFFORT = 'high'
-const MIN_OUTPUT_TOKENS = 1024
-const MAX_OUTPUT_TOKENS = 393216
 
 let MODULE_ID = 0
 
