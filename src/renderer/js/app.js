@@ -25,6 +25,7 @@ import { initEditor } from './editor.js'
 import { initPreview } from './preview.js'
 import { initTree } from './tree.js'
 import { initAiPanel } from './ai-panel.js'
+import { createLoadGuard } from './load-guard.js'
 
 const api = typeof window !== 'undefined' ? window.api : undefined
 
@@ -184,6 +185,8 @@ let toast = null
 let menus = null
 let appMenus = null
 let aiPanel = null
+/** 打开文档的并发令牌：只允许最后一次打开请求落地 */
+const documentLoads = createLoadGuard()
 let appMenuOpenKind = null
 let lastClosedAppMenu = { kind: '', at: 0 }
 let appSubmenuOpen = false
@@ -622,6 +625,7 @@ function getAiDocumentContext() {
 
 async function newDocument() {
   if (!(await autoSaveBeforeLeave())) return
+  documentLoads.invalidate()
   applyDocument({ path: null, content: '', markDirty: true })
 }
 
@@ -666,13 +670,16 @@ async function confirmUnsavedIfNeeded() {
 async function loadFilePath(path, { force = false } = {}) {
   if (!path) return false
   if (!force && !(await autoSaveBeforeLeave())) return false
+  // 并发打开：只让最后一次请求落地，避免先发起的旧请求晚返回后覆盖新文档
+  const token = documentLoads.begin()
   let result
   try {
     result = await api.readFile(path)
   } catch (error) {
-    toast?.error(`打开文件失败：${error?.message || error}`)
+    if (documentLoads.isCurrent(token)) toast?.error(`打开文件失败：${error?.message || error}`)
     return false
   }
+  if (!documentLoads.isCurrent(token)) return false
   if (!result || !result.ok) {
     toast?.error(result?.error || `无法打开文件：${path}`)
     return false
@@ -684,13 +691,15 @@ async function loadFilePath(path, { force = false } = {}) {
 
 async function openFileDialog() {
   if (!(await autoSaveBeforeLeave())) return
+  const token = documentLoads.begin()
   let result
   try {
     result = await api.openFile()
   } catch (error) {
-    toast?.error(`打开文件失败：${error?.message || error}`)
+    if (documentLoads.isCurrent(token)) toast?.error(`打开文件失败：${error?.message || error}`)
     return
   }
+  if (!documentLoads.isCurrent(token)) return
   if (!result || result.canceled) {
     editor?.focus()
     return
@@ -943,6 +952,7 @@ async function saveDocumentAs({ silent = false } = {}) {
 async function closeDocument() {
   if (!state.doc) return
   if (!(await autoSaveBeforeLeave())) return
+  documentLoads.invalidate()
   resetToWelcome()
 }
 
