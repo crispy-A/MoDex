@@ -127,3 +127,36 @@ test('ai-store：损坏文件回退为空并在下次保存时修复', async (t)
   await store.save(makeSession())
   assert.equal((await store.list()).length, 1)
 })
+
+test('ai-store：并发保存串行落盘，不丢会话且无 .tmp 残留', async (t) => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'modex-ai-store-concurrent-'))
+  t.after(async () => {
+    await fsp.rm(dir, { recursive: true, force: true }).catch(() => {})
+  })
+  const filePath = path.join(dir, 'sessions.json')
+  const store = createAiStore({ filePath })
+  const total = 6
+
+  await Promise.all(
+    Array.from({ length: total }, (_, index) =>
+      store.save(
+        makeSession({
+          id: `s_concurrent_${index}`,
+          title: `并发 ${index}`,
+          messages: [{ id: `m_${index}`, role: 'user', content: `内容 ${index}`, createdAt: Date.now() }],
+        })
+      )
+    )
+  )
+
+  const reloaded = createAiStore({ filePath })
+  const list = await reloaded.list()
+  assert.equal(list.length, total)
+  assert.deepEqual(
+    list.map((item) => item.id).sort(),
+    Array.from({ length: total }, (_, index) => `s_concurrent_${index}`).sort()
+  )
+
+  const leftovers = (await fsp.readdir(dir)).filter((name) => name.endsWith('.tmp'))
+  assert.deepEqual(leftovers, [], `不应残留临时文件：${leftovers.join(', ')}`)
+})

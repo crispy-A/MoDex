@@ -119,42 +119,63 @@ function summarize(session) {
 function createAiStore({ filePath }) {
   if (!filePath) throw new Error('ai-store: 缺少 filePath')
   const directory = path.dirname(filePath)
-  let loaded = false
   let sessions = []
+  /** 首次加载的共享 Promise：并发 save 必须等同一次加载完成后再改内存，避免被空结果覆盖 */
+  let loadPromise = null
+  /** 写盘串行队列：并发 save/remove 时避免旧快照覆盖新结果 */
+  let writeQueue = Promise.resolve()
 
-  async function load() {
-    if (loaded) return sessions
-    loaded = true
-    try {
-      const text = await fsp.readFile(filePath, 'utf8')
-      const parsed = JSON.parse(text)
-      const list = parsed && Array.isArray(parsed.sessions) ? parsed.sessions : []
-      sessions = list.map(sanitizeSession).filter(Boolean)
-      sessions.sort((a, b) => b.updatedAt - a.updatedAt)
-      if (sessions.length > MAX_SESSIONS) sessions = sessions.slice(0, MAX_SESSIONS)
-    } catch {
-      sessions = []
+  function load() {
+    if (!loadPromise) {
+      loadPromise = (async () => {
+        try {
+          const text = await fsp.readFile(filePath, 'utf8')
+          const parsed = JSON.parse(text)
+          const list = parsed && Array.isArray(parsed.sessions) ? parsed.sessions : []
+          sessions = list.map(sanitizeSession).filter(Boolean)
+          sessions.sort((a, b) => b.updatedAt - a.updatedAt)
+          if (sessions.length > MAX_SESSIONS) sessions = sessions.slice(0, MAX_SESSIONS)
+        } catch {
+          sessions = []
+        }
+        return sessions
+      })()
     }
-    return sessions
+    return loadPromise
   }
 
-  async function persist() {
+  async function writeSnapshot() {
     await fsp.mkdir(directory, { recursive: true })
+    // 快照在队列执行时再序列化，保证包含此前所有已完成的内存修改
     const payload = JSON.stringify({ version: SCHEMA_VERSION, sessions })
-    const tempPath = `${filePath}.tmp`
-    await fsp.writeFile(tempPath, payload, 'utf8')
-    // Windows 下目标文件偶发被扫描/占用会导致 rename EPERM，重试并在必要时先删除目标
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      try {
-        await fsp.rename(tempPath, filePath)
-        return
-      } catch (err) {
-        const retryable = err && (err.code === 'EPERM' || err.code === 'EACCES' || err.code === 'EEXIST')
-        if (!retryable || attempt === 3) throw err
-        await fsp.rm(filePath, { force: true }).catch(() => {})
-        await new Promise((resolve) => setTimeout(resolve, 15 * (attempt + 1)))
+    const tempPath = `${filePath}.${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.tmp`
+    try {
+      await fsp.writeFile(tempPath, payload, 'utf8')
+      // Windows 下目标文件偶发被扫描/占用会导致 rename EPERM，重试并在必要时先删除目标
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        try {
+          await fsp.rename(tempPath, filePath)
+          return
+        } catch (err) {
+          const retryable = err && (err.code === 'EPERM' || err.code === 'EACCES' || err.code === 'EEXIST')
+          if (!retryable || attempt === 3) throw err
+          await fsp.rm(filePath, { force: true }).catch(() => {})
+          await new Promise((resolve) => setTimeout(resolve, 15 * (attempt + 1)))
+        }
       }
+    } finally {
+      // rename 成功后临时文件已不存在，force 清理对失败路径同样安全
+      await fsp.rm(tempPath, { force: true }).catch(() => {})
     }
+  }
+
+  function persist() {
+    const task = writeQueue.then(writeSnapshot, writeSnapshot)
+    writeQueue = task.then(
+      () => undefined,
+      () => undefined
+    )
+    return task
   }
 
   async function list() {
