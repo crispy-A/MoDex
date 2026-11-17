@@ -8,7 +8,7 @@
  * 通过 window.api.ai.* 的 IPC 白名单交互（preload 由主进程侧提供）。
  */
 
-import { $, $$, el, clamp, copyText, makeDragResizer } from './util.js'
+import { $, $$, el, clamp, copyText, makeDragResizer, streamRenderInterval } from './util.js'
 import { icons } from './icons.js'
 import { renderMarkdown } from './markdown.js'
 import {
@@ -45,7 +45,6 @@ const MIN_PANEL_WIDTH = 320
 const MAX_PANEL_WIDTH = 560
 const DEFAULT_PANEL_WIDTH = 360
 const TITLE_LIMIT = 24
-const STREAM_RENDER_INTERVAL = 50
 
 let MODULE_ID = 0
 
@@ -173,6 +172,7 @@ export function initAiPanel(deps = {}) {
   let providerName = 'DeepSeek'
   let defaultModelId = DEFAULT_MODEL
   let mode = 'closed'
+  let viewportObserver = null
   let panelWidth = DEFAULT_PANEL_WIDTH
   let currentSession = null
   let activeRequest = null
@@ -1189,7 +1189,7 @@ export function initAiPanel(deps = {}) {
       if (activeRequest !== request) return
       updateAssistantMessage(request.article, request.message)
       scrollToBottom(false)
-    }, STREAM_RENDER_INTERVAL)
+    }, streamRenderInterval(request.content.length))
   }
 
   function flushRequestRender(request) {
@@ -1661,6 +1661,11 @@ export function initAiPanel(deps = {}) {
     })
 
     window.addEventListener('resize', onWindowResize)
+    // 窗口 resize 事件在合成/遮挡场景下可能被合并或延迟；视口尺寸变化用 ResizeObserver 兜底
+    if (typeof ResizeObserver === 'function') {
+      viewportObserver = new ResizeObserver(() => onWindowResize())
+      viewportObserver.observe(document.documentElement)
+    }
   }
 
   async function loadBootstrap() {
@@ -1743,6 +1748,10 @@ export function initAiPanel(deps = {}) {
       unsubscribeEvent = null
     }
     window.removeEventListener('resize', onWindowResize)
+    if (viewportObserver) {
+      viewportObserver.disconnect()
+      viewportObserver = null
+    }
     setGenerating(false)
   }
 

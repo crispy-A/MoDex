@@ -15,6 +15,7 @@ import {
   resolveMarkdownName,
   normalizeForCompare,
   isSameOrInside,
+  rootsSignature,
 } from './util.js'
 import { icons } from './icons.js'
 
@@ -343,7 +344,10 @@ export function initTree(ctx = {}) {
     }
   }
 
-  /** 同步侧栏外壳（空状态 / 底部计数）并通知 app 持久化 */
+  /** 上次通知 app 的根集合签名：展开/折叠等 UI 变化不重复持久化 */
+  let lastRootsSignature = null
+
+  /** 同步侧栏外壳（空状态 / 底部计数），根集合真正变化时才通知 app 持久化 */
   function syncRootChrome() {
     const count = roots.length
     const hasRoots = count > 0
@@ -353,6 +357,12 @@ export function initTree(ctx = {}) {
       rootLabel.textContent = hasRoots ? `共 ${count} 个文件夹` : ''
       rootLabel.title = hasRoots ? activeRoot || roots[0].path : ''
     }
+    const signature = rootsSignature(
+      roots.map((root) => root.path),
+      activeRoot
+    )
+    if (signature === lastRootsSignature) return
+    lastRootsSignature = signature
     ctx.onRootsChange?.({
       rootFolders: roots.map((root) => root.path),
       activeFolder: activeRoot,

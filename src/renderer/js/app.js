@@ -320,6 +320,8 @@ function setViewMode(mode, { persist = true } = {}) {
   if (!VIEW_NAMES[mode]) return
   state.viewMode = mode
   applyViewMode()
+  // 从编辑模式切回时补一次渲染（编辑模式下输入不解析预览）
+  if (mode !== 'edit') renderPreview(true)
   if (persist) persistSettings({ viewMode: mode })
 }
 
@@ -570,8 +572,11 @@ const scheduleAutoSave = debounce(async () => {
   await saveDocument({ silent: true })
 }, 2000)
 
-function renderPreview() {
-  preview?.render(state.doc ? state.doc.content : '')
+function renderPreview(force = false) {
+  if (!preview) return
+  // 编辑模式看不到预览：先把解析推迟到切回分栏/预览时（force=true），长文档输入更流畅
+  if (!force && state.viewMode === 'edit') return
+  preview.render(state.doc ? state.doc.content : '')
 }
 
 function handleContentChange(text) {

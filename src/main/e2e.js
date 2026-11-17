@@ -39,9 +39,27 @@ async function runE2E({ win, cli, paths }) {
   const step = (name, detail) => report.steps.push({ name, detail: detail === undefined ? null : detail })
   const fail = (name, error) => report.errors.push({ name, error: String((error && error.message) || error) })
 
+  /** 给可能永久挂起的 Electron/CDP 调用加超时，避免整个验收被一个步骤拖死 */
+  const withTimeout = (promise, ms, message) => {
+    let timer = null
+    return Promise.race([
+      promise,
+      new Promise((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms)
+      }),
+    ]).finally(() => {
+      if (timer) clearTimeout(timer)
+    })
+  }
+
   const run = async (label, script) => {
     try {
-      return await win.webContents.executeJavaScript(`(async () => { ${script} })()`, true)
+      const value = await withTimeout(
+        win.webContents.executeJavaScript(`(async () => { ${script} })()`, true),
+        30000,
+        `步骤 ${label} 超时（30s）`
+      )
+      return value
     } catch (err) {
       fail(label, err)
       return undefined
@@ -55,16 +73,22 @@ async function runE2E({ win, cli, paths }) {
   const capturePng = async () => {
     try {
       if (!win.webContents.debugger.isAttached()) win.webContents.debugger.attach('1.3')
-      const { data } = await win.webContents.debugger.sendCommand('Page.captureScreenshot', {
-        format: 'png',
-        fromSurface: true,
-      })
+      const { data } = await withTimeout(
+        win.webContents.debugger.sendCommand('Page.captureScreenshot', {
+          format: 'png',
+          fromSurface: true,
+        }),
+        8000,
+        'CDP 截图超时（8s）'
+      )
       if (data) return Buffer.from(data, 'base64')
     } catch (err) {
       report.errors.push({ name: 'cdp-screenshot', error: String((err && err.message) || err) })
     }
     try {
-      return (await win.webContents.capturePage()).toPNG()
+      return (
+        await withTimeout(win.webContents.capturePage(), 8000, 'capturePage 超时（8s）')
+      ).toPNG()
     } catch (err) {
       fail('capture-page', err)
       return null
@@ -1454,15 +1478,31 @@ async function runE2E({ win, cli, paths }) {
       // 窄窗口：面板应从 dock 切换为 overlay，且无横向溢出
       const originalAiBounds = win.getContentBounds()
       win.setContentSize(900, 600)
-      await delay(500)
-      const aiOverlay = await run(
-        'ai-overlay',
-        `return {
+      // resize 事件到达时间受窗口合成影响，轮询等待 overlay 状态（最多 5s）
+      const overlayStateScript = `const app = document.getElementById('app');
+         const panel = document.getElementById('ai-panel');
+         if (app.dataset.aiOverlay !== 'true') return null;
+         return {
            width: window.innerWidth,
-           overlay: document.getElementById('app').dataset.aiOverlay || null,
+           overlay: app.dataset.aiOverlay,
+           mode: panel && panel.dataset.mode,
            overflowX: document.documentElement.scrollWidth > window.innerWidth + 1,
          }`
-      )
+      let aiOverlay = await waitFor('ai-overlay', overlayStateScript, 5000)
+      if (!aiOverlay) {
+        // 超时后补一次现场快照，便于定位是面板状态还是 resize 未生效
+        aiOverlay = await run(
+          'ai-overlay-state',
+          `const app = document.getElementById('app');
+           const panel = document.getElementById('ai-panel');
+           return {
+             width: window.innerWidth,
+             overlay: app.dataset.aiOverlay || null,
+             mode: panel && panel.dataset.mode,
+             overflowX: document.documentElement.scrollWidth > window.innerWidth + 1,
+           }`
+        )
+      }
       win.setContentBounds(originalAiBounds)
       await delay(400)
       assert(

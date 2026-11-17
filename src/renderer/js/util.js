@@ -174,6 +174,26 @@ export function normalizeForCompare(target) {
   return String(target ?? '').replace(/\//g, '\\').toLowerCase()
 }
 
+/**
+ * 根集合签名：只有根列表或激活根真的变化时才需要持久化设置。
+ * 展开/折叠、刷新目录等纯 UI 变化不应触发 settings 写盘。
+ */
+export function rootsSignature(rootFolders, activeFolder) {
+  const list = Array.isArray(rootFolders) ? rootFolders.map((item) => normalizeForCompare(item)) : []
+  return `${list.join('\n')}\n#${normalizeForCompare(activeFolder || '')}`
+}
+
+/**
+ * 流式回答重渲染间隔：内容越长 markdown 全量重解析越慢，自适应降频，
+ * 保证长回答时输入/滚动仍然流畅（短回答保持 50ms 的即时感）。
+ */
+export function streamRenderInterval(length) {
+  const chars = Number(length) || 0
+  if (chars >= 60000) return 200
+  if (chars >= 20000) return 120
+  return 50
+}
+
 /** child 是否与 parent 相同或位于 parent 之内 */
 export function isSameOrInside(child, parent) {
   const childPath = normalizeForCompare(child)

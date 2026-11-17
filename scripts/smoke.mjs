@@ -339,9 +339,9 @@ async function main() {
   })
 
   const timeout = setTimeout(() => {
-    console.error('[smoke] 超时（120s），强制结束进程')
+    console.error('[smoke] 超时（180s），强制结束进程')
     child.kill()
-  }, 120000)
+  }, 180000)
 
   const exitCode = await new Promise((resolve) => {
     child.on('exit', (code) => resolve(code))

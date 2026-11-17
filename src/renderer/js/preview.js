@@ -34,6 +34,10 @@ export function initPreview(ctx = {}) {
   const api = window.api
   let baseDir = null
   let syncing = false
+  // 同一份内容 + 同一个基准目录不重复解析/重建 DOM（输入停顿、视图切换都会重复调用 render）
+  let lastSource = null
+  let lastBaseDir = null
+  let hasRendered = false
 
   function getScrollRatio() {
     const max = pane.scrollHeight - pane.clientHeight
@@ -195,6 +199,10 @@ export function initPreview(ctx = {}) {
 
   function render(text) {
     const source = String(text ?? '')
+    if (hasRendered && source === lastSource && baseDir === lastBaseDir) return
+    lastSource = source
+    lastBaseDir = baseDir
+    hasRendered = true
     const ratio = getScrollRatio()
     if (!source.trim()) {
       showPlaceholder()

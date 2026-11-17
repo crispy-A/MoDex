@@ -261,6 +261,9 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
       spellcheck: false,
+      // 端到端/截图模式下关闭后台节流：窗口被遮挡时 Chromium 会推迟渲染生命周期
+      // （resize 回调 / ResizeObserver），会让依赖视口变化的断言随机失败。
+      backgroundThrottling: !(cli.e2e || cli.autosaveTest || cli.screenshot),
     },
   })
 
