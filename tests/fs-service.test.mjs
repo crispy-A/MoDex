@@ -244,7 +244,7 @@ test('rename：重命名文件、目录、大小写与冲突', async (t) => {
   assert.equal((await svc.rename('relative.md', 'a.md')).code, 'EINVAL')
 })
 
-test('remove：注入回收站时走回收站，失败时回退永久删除', async (t) => {
+test('remove：注入回收站时走回收站，失败时中止且保留文件', async (t) => {
   const dir = await makeTempDir(t)
   const file = path.join(dir, 'a.md')
   await fsp.writeFile(file, 'x')
@@ -266,10 +266,10 @@ test('remove：注入回收站时走回收站，失败时回退永久删除', as
 
   const file2 = path.join(dir, 'b.md')
   await fsp.writeFile(file2, 'x')
-  const fallback = await svc.remove(file2, { trash: async () => { throw new Error('no bin') } })
-  assert.equal(fallback.ok, true)
-  assert.equal(fallback.trashed, false)
-  assert.equal(fs.existsSync(file2), false)
+  const aborted = await svc.remove(file2, { trash: async () => { throw new Error('no bin') } })
+  assert.equal(aborted.ok, false)
+  assert.equal(aborted.code, 'TRASH_FAILED')
+  assert.equal(fs.existsSync(file2), true)
 })
 
 test('remove：空目录可删除，非空目录拒绝，不存在报 ENOENT', async (t) => {

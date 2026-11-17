@@ -220,7 +220,7 @@ md-editor/
 - 本地图片经 `app://file/` 代理，仅允许图片扩展名、限制 30 MB、必须绝对路径，响应带 `CSP: default-src 'none'`；
 - Markdown 渲染固定 `html: false`，预览只接受 markdown-it 输出，避免原始 HTML 注入；链接只允许 http/https 交给系统浏览器；
 - 主进程对所有路径做绝对路径校验，文件名经非法字符/保留名/长度校验；文本读取限制 5 MB、强制 UTF-8；
-- 删除只允许文件或空文件夹，并优先移入系统回收站；保存前比对 mtime，外部修改不会静默覆盖；
+- 删除只允许文件或空文件夹，并移入系统回收站；回收站不可用时中止删除并提示（不会静默永久删除）；保存前比对 mtime，外部修改不会静默覆盖；
 - **AI API Key 仅主进程持有**：`safeStorage` 加密存储、渲染层只能拿到掩码；AI 网络请求全部在主进程发出，
   渲染层 CSP 仍是 `connect-src 'self'`；AI 回答走与预览相同的 markdown-it（`html:false`），不会执行模型输出的 HTML/脚本。
 

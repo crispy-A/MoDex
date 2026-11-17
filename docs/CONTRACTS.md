@@ -28,6 +28,7 @@ type ErrorCode =
   | 'EISDIR'      // 期望文件却是目录
   | 'ENOTDIR'     // 期望目录却是文件
   | 'ENOTEMPTY'   // 目录非空，不能删除
+  | 'TRASH_FAILED'// 无法移入系统回收站，删除中止（文件保留，不会静默永久删除）
   | 'TOO_LARGE'   // 超过 5 MB 文本上限
   | 'BAD_ENCODING'// 非 UTF-8 文本
   | 'NOT_MARKDOWN'// 新建文件扩展名不是 .md / .markdown
@@ -124,7 +125,7 @@ window.api = {
   createFile(dirPath: string, name: string, content?: string): Promise<Result<{ path: string, name: string }>>
   createFolder(dirPath: string, name: string): Promise<Result<{ path: string, name: string }>>
   rename(targetPath: string, newName: string): Promise<Result<{ path: string, name: string }>>
-  remove(targetPath: string): Promise<Result<{ path: string, trashed: boolean }>>   // 文件/空目录 -> 回收站
+  remove(targetPath: string): Promise<Result<{ path: string, trashed: boolean }>>   // 文件/空目录 -> 回收站；回收站不可用返回 TRASH_FAILED 且不删除
   pathInfo(targetPath: string): Promise<Result<{
     path: string, name: string, dir: string, dirName: string,
     exists: boolean, isDirectory: boolean, isMarkdown: boolean,

@@ -28,6 +28,7 @@ const ERROR_TEXT = {
   EISDIR: '目标是一个文件夹',
   ENOTDIR: '目标不是文件夹',
   ENOTEMPTY: '文件夹不是空的，无法删除',
+  TRASH_FAILED: '无法移入系统回收站，文件未删除',
   ENAMETOOLONG: '名称过长',
   ENOSPC: '磁盘空间不足',
   EROFS: '磁盘为只读',
@@ -345,26 +346,26 @@ async function remove(targetPath, options = {}) {
     }
   }
 
-  let trashed = false
+  // 删除只走「移入回收站」这一条破坏性路径：回收站不可用时中止并保留文件，
+  // 绝不静默回退为永久删除（确认文案向用户承诺了可以从回收站恢复）。
   if (typeof options.trash === 'function') {
     try {
       await options.trash(targetPath)
-      trashed = true
-    } catch {
-      trashed = false
-    }
-  }
-
-  if (!trashed) {
-    try {
-      if (isDirectory) await fsp.rmdir(targetPath)
-      else await fsp.rm(targetPath)
     } catch (err) {
-      return mapError(err, targetPath)
+      return fail('TRASH_FAILED', `${ERROR_TEXT.TRASH_FAILED}：${targetPath}`)
     }
+    return ok({ path: targetPath, trashed: true })
   }
 
-  return ok({ path: targetPath, trashed })
+  // 只有调用方显式不传回收站实现（单测 / 无 shell 环境）时才直接删除
+  try {
+    if (isDirectory) await fsp.rmdir(targetPath)
+    else await fsp.rm(targetPath)
+  } catch (err) {
+    return mapError(err, targetPath)
+  }
+
+  return ok({ path: targetPath, trashed: false })
 }
 
 /** 查询单个路径的信息；不存在时返回 exists:false（不是错误） */
