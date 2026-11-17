@@ -85,7 +85,7 @@
 ## 运行
 
 ```powershell
-cd md-editor
+cd MoDex
 npm install      # 首次安装 electron / markdown-it（vendor）/ sharp（图标生成）/ rcedit（写 exe 资源）
 npm start        # 启动应用
 ```
@@ -153,7 +153,7 @@ npm run installer
 ## 测试与验收
 
 ```powershell
-npm test                                   # 单元测试：fs-service / state-store / AI 协议与会话 / 安全回归（86 项）
+npm test                                   # 单元测试：文件系统 / 状态 / AI 协议与预算 / 安全回归 / 契约一致性（121 项）
 npm run smoke                              # 两阶段端到端验收：界面断言 141 项 + 关闭自动保存
 npm run smoke -- --app "release/MoDex-1.0.0-win32-x64/MoDex.exe"   # 验收打包产物
 ```
@@ -174,11 +174,13 @@ npm run smoke -- --app "release/MoDex-1.0.0-win32-x64/MoDex.exe"   # 验收打�
 
 `docs/QA-REPORT.md` 是独立 QA 成员的验收报告：需求覆盖证据表、安全审计（CSP 实测、7 类 XSS 载荷、
 40 项路径/文件名边界、`app://` 协议 22 项、原生对话框 6 项）、健壮性边界与缺陷分级。
-累计通过 **500 项**检查（86 单测 + 141 端到端 + 30 AI 助手专项 + 20 预览样式专项 + 24 单条导航栏专项 +
-100 CDP 运行时审计 + 23 更名/设计还原 + 18 多文件夹专项 + 17 加固复验 + 14 自动保存专项 + 11 行内编辑竞态复验 +
-16 微动效专项），
+该报告是 **v1.0.0 审计快照**，当时累计通过 **500 项**检查（86 单测 + 141 端到端 + 30 AI 助手专项 + 20 预览样式专项 +
+24 单条导航栏专项 + 100 CDP 运行时审计 + 23 更名/设计还原 + 18 多文件夹专项 + 17 加固复验 + 14 自动保存专项 +
+11 行内编辑竞态复验 + 16 微动效专项）；
 P0=0、P1=0；P2 中的「外部修改覆盖」「IPC 来源校验」「CSP 补全」「图片响应 CSP」「第二实例打开」已修复，
 其余 P2 为不阻塞的后续建议。*（报告中的「轻墨」为更名前名称，即本产品 MoDex。）*
+**v1.1 起的增量**（AI 生成参数、回收站失败中止、并发打开令牌、主进程安全模块单测等）不在该快照内，
+当前单测已增至 **121 项**，以 `npm test` 与 git 历史为准。
 多文件夹、单条导航栏、自动保存、预览样式、AI 助手、微动效与安装包的验收见报告 §13/§14/§15/§16/§17/§18/§19；AI 实现契约见
 `docs/AI-PANEL-SPEC.md`，设计稿见 `docs/mockups/`；7 套预览样式的调研对比见 `docs/MARKDOWN-STYLE-GALLERY.md`。
 
@@ -199,7 +201,7 @@ P0=0、P1=0；P2 中的「外部修改覆盖」「IPC 来源校验」「CSP 补�
 ## 目录结构
 
 ```text
-md-editor/
+MoDex/
 ├── assets/                 应用图标（assets/logo/*.svg → npm run icons → icon.ico/png）
 ├── docs/                   接口契约、渲染层规格、Codex 风格设计规范、QA 报告、截图
 ├── scripts/                启动器、端到端验收、便携版打包、图标生成

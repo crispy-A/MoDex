@@ -1,5 +1,8 @@
-# MoDex AI 对话面板 v1 · 实现契约
+# MoDex AI 对话面板 v1.1 · 实现契约
 
+> 版本：**v1.1** —— 在 v1 契约上新增 §3.10 生成参数（上下文窗口 / 最大输出 token / 思考等级），
+> 已随 v1.0.0 基线交付；数值口径以 `src/main/ai/ai-options.js` 为准。
+>
 > 本文件是 **实现阶段唯一接口依据**（用户已确认按 `docs/AI-PANEL-PROPOSAL.md` 的建议实施）。
 > 约定：主进程/安全/协议由 Lead 实现；渲染层 UI 由 `renderer-dev` 实现；QA 独立验收。
 > 写作用域：Lead → `src/main/**`、`src/preload/preload.js`、`scripts/smoke.mjs`、`tests/**`、docs；

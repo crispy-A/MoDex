@@ -28,6 +28,9 @@ src/renderer/js/preview.js    # markdown 渲染、链接/图片处理、滚动�
 src/renderer/js/markdown.js   # markdown-it 配置、任务列表、标题 id、代码块语言标签
 src/renderer/js/util.js       # DOM 助手、debounce、路径小工具（纯函数）、格式化
 src/renderer/js/icons.js      # 内联 SVG 图标字符串
+src/renderer/js/ai-panel.js   # AI 面板三态、流式消息、历史会话、设置弹窗
+src/renderer/js/ai-options.js # AI 生成参数常量（主进程 ai-options 的镜像，契约测试对齐）
+src/renderer/js/load-guard.js # 并发打开文档的请求令牌（纯逻辑，可单测）
 ```
 
 不要修改 `index.html`、`styles.css`、`js/**` 之外的文件。**禁止**在此目录下新增 npm 依赖或构建配置。
@@ -42,13 +45,12 @@ markdown-it 在 module 之前以普通 `<script src="vendor/markdown-it.min.js">
 <div id="app" data-theme="light" data-view="split">
   <header id="toolbar">
     <div class="tb-group tb-brand"><span class="brand-mark"><!-- M 标记 SVG --></span><span class="brand-name">MoDex</span></div>
-    <div class="tb-group">
-      <button data-action="toggle-sidebar" title="显示/隐藏侧栏 (Ctrl+B)" aria-label="切换侧栏">…</button>
-      <button data-action="new-doc" title="新建文档 (Ctrl+N)">新建</button>
-      <button data-action="open-file" title="打开文件 (Ctrl+O)">打开文件</button>
-      <button data-action="open-folder" title="打开文件夹">打开文件夹</button>
-      <button data-action="save" title="保存 (Ctrl+S)">保存</button>
-      <button data-action="save-as" title="另存为 (Ctrl+Shift+S)">另存为</button>
+    <button data-action="toggle-sidebar" title="显示/隐藏侧栏 (Ctrl+Shift+E)" aria-label="切换侧栏">…</button>
+    <div class="tb-group tb-menubar" role="group" aria-label="应用菜单">
+      <button data-app-menu="file">文件</button>
+      <button data-app-menu="edit">编辑</button>
+      <button data-app-menu="view">视图</button>
+      <button data-app-menu="help">帮助</button>
     </div>
     <div class="tb-spacer"></div>
     <div class="tb-group" id="view-switch">
@@ -56,7 +58,8 @@ markdown-it 在 module 之前以普通 `<script src="vendor/markdown-it.min.js">
       <button data-action="view-split">分栏</button>
       <button data-action="view-preview">预览</button>
     </div>
-    <button data-action="theme-toggle" title="切换主题">…</button>
+    <button data-action="theme-toggle" title="切换主题 (Ctrl+Shift+T)">…</button>
+    <button id="ai-toggle" data-ai-toggle title="AI 写作助手 (Ctrl+Shift+A)">…</button>
   </header>
 
   <aside id="sidebar">
@@ -128,10 +131,10 @@ markdown-it 在 module 之前以普通 `<script src="vendor/markdown-it.min.js">
 
 ## 3. 视觉设计（截图会被人工验收）
 
-- 浅色：背景 `#f7f8fa`、面板 `#ffffff`、正文 `#24292f`、次要 `#6b7280`、边框 `#e5e7eb`、强调色 `#2f6feb`。
-- 深色：背景 `#16181d`、面板 `#1f232b`、正文 `#e6e8eb`、次要 `#9aa1ab`、边框 `#2c313a`、强调色 `#6ea8fe`。
+- 浅色：背景 `#fafaf8`、面板 `#ffffff`、正文 `#1b1b19`、次要 `#6f6f69`、边框 `#e7e6e0`、强调色 `#4a6b8a`。
+- 深色：背景 `#0e0e0f`、面板 `#141415`、正文 `#ececea`、次要 `#8e8e88`、边框 `#252527`、强调色 `#8fb0cf`。
 - 用 CSS 变量实现两套主题（`#app[data-theme="dark"]` 覆盖），`system` 用 `prefers-color-scheme` 解析后写到 data-theme。
-- 工具栏 44px 高、状态栏 26px，按钮 hover/active/focus-visible 状态完整，禁用态（无文档时保存按钮）半透明。
+- 工具栏 40px 高、状态栏 24px，按钮 hover/active/focus-visible 状态完整，禁用态（无文档时保存按钮）半透明。
 - 编辑器：等宽字体 `"Cascadia Code", "JetBrains Mono", Consolas, "Courier New", monospace`，行高 1.65，字号来自 settings.fontSize，右侧留白，选中底色使用强调色 18% 透明。
 - 预览排版要精致：标题层级、行内代码底色、代码块圆角+语言标签、表格斑马纹、引用左侧色条、任务列表复选框、hr、图片最大宽度 100%、链接强调色、段落间距 0.9em。
 - 空状态、加载态、错误 toast（右下角、3 秒消失、可堆叠，success/error 两种颜色）。
@@ -143,13 +146,13 @@ markdown-it 在 module 之前以普通 `<script src="vendor/markdown-it.min.js">
 ### 文档生命周期
 - 启动：`api.bootstrap()` → 应用 settings（主题/视图/字号/侧栏）、最近列表；若 `initial.root` 打开文件树；若 `initial.file` 读取并打开；`initial.root` 为空但 settings.lastFolder 存在时**不自动打开**（避免打扰），仅填入最近列表。
 - 新建文档：内存缓冲，`path=null`、`name=未命名.md`、内容为空模板（`# 未命名\n\n` 可选空），标记 dirty 但尚未写盘；首次保存走 `saveFileAs`。
-- 打开文件：`api.openFile()` 或点击树节点 → 有未保存修改时先 `confirmUnsaved`；成功则显示内容并重置 dirty。
+- 打开文件：`api.openFile()` 或点击树节点 → 先 `autoSaveBeforeLeave`（当前文档 dirty 时有路径静默写盘、未命名走另存为，失败/取消则中止打开）→ 成功则显示内容并重置 dirty。
 - 保存：有 path → `api.writeFile`；无 path → `saveFileAs` 后再写。成功后更新 mtime、dirty=false、toast「已保存」、`api.setDirty(false)`、`api.addRecent('file', path)`。
 - 另存为：`saveFileAs(当前 path 或 最近目录/未命名.md)` → 写盘 → 当前文档切换到新路径。
-- 关闭文档（菜单 `file:close`）：未保存确认后清空编辑区并显示欢迎页。
+- 关闭文档（菜单 `file:close`）：`autoSaveBeforeLeave` 成功后清空编辑区并显示欢迎页（不再弹保存询问）。
 - 未保存状态：内容变化即 dirty=true；`api.setDirty(true/false)` 同步主进程；标题变 `● 文件名 — MoDex`。
-- 窗口关闭：`api.onCloseRequested` 回调里执行保存（走保存流程），保存成功或用户取消后分别 `api.requestClose()` 或什么都不做。
-- 自动保存：settings.autoSave 为 true 时，输入停止 2s 后自动保存（无 path 则跳过并提示一次）。
+- 窗口关闭：主进程 `isDirty` 时发 `onCloseRequested`；渲染层自动保存成功后 `api.requestClose()`，失败/取消则 `api.cancelClose()` 保持窗口。**不再弹「保存/不保存/取消」**。
+- 自动保存：切换文件 / 新建 / 关闭文档 / 关闭软件统一走 `autoSaveBeforeLeave`（见 `docs/AUTOSAVE-SPEC.md`）；`settings.autoSave` 为空闲自动保存预留字段，默认 false 且暂无 UI 开关，不参与上述流程。
 
 ### 文件树
 - 数据：`api.listDir(dir)` 递归按需展开（点击目录时仅加载该层，缓存展开状态）。
@@ -157,7 +160,7 @@ markdown-it 在 module 之前以普通 `<script src="vendor/markdown-it.min.js">
 - 新建文件/文件夹：侧栏工具栏按钮 → 若选中目录则建在其中，否则建在根目录；行内输入框（Enter 确认 / Esc 取消 / 失焦取消），创建成功自动刷新并打开新文件（新建文件时）。
 - 右键菜单：新建文件、新建文件夹、重命名、删除、在资源管理器中显示、复制路径（`navigator.clipboard` 不可用时用隐藏 input 兜底）。
 - 重命名：行内编辑，扩展名可改；成功刷新并同步当前文档路径。
-- 删除：`api.confirmDelete` → `api.remove`（回收站）；若删的是当前文档，先确认未保存，然后回到欢迎页；失败 toast 显示 `error`。
+- 删除：`api.confirmDelete` → `api.remove`（移入系统回收站）；回收站不可用时返回 `TRASH_FAILED` 且**文件保留**，失败 toast 显示 `error`。若删的是当前文档，先确认未保存，然后回到欢迎页。
 - 刷新：重新加载已展开节点；`api.onTreeChanged(root)` 事件后 300ms 防抖刷新。
 - 拖放：把 .md/.markdown 文件拖到窗口空白处打开（额外加分，可后置）。
 
@@ -202,6 +205,8 @@ window.__qm = {
     rootFolders: string[], activeFolder: string|null, sidebarVisible: boolean,
     wordCount: number, treeFileCount: number       // treeFileCount 为所有根合计
     previewStyle: 'codex'|'github'|'vue'|'notion'|'feishu'|'tailwind'|'serif'
+    aiPanelMode: 'closed'|'open'|'rail', aiPanelWidth: number, aiModel: string, aiIncludeContext: boolean,
+    aiContextWindow: string, aiMaxOutputTokens: number, aiReasoningEffort: string
   },
   async openPath(path: string): Promise<void>        // 走真实打开语义：当前文档 dirty 时会先自动保存（见 AUTOSAVE-SPEC）
   async openRoot(path: string): Promise<void>        // 添加一个文件夹根（已存在则展开并激活）
@@ -215,7 +220,7 @@ window.__qm = {
 ```
 `app.js` 末尾设置 `window.__qm`，并在 `ready` resolve 之后再触发 `document.documentElement.dataset.ready='1'`。
 
-## 6. AI 对话面板（v1）
+## 6. AI 对话面板（v1.1）
 
 完整契约见 `docs/AI-PANEL-SPEC.md`，这里只列渲染层要点：
 
@@ -226,6 +231,8 @@ window.__qm = {
   `failed` 错误卡片（带重试）、`cancelled` 标记停止；发送时 `requestId` 用 `crypto.randomUUID()`。
 - 上下文：`aiIncludeContext` 默认 false；快捷提问 summary/outline 自动携带当前文档、polish 使用选区；
   文档内容通过 `ai:send({ context: { fileName, content } })` 交给主进程，渲染层不直接调网络。
+- 生成参数：设置弹窗提供**上下文窗口 / 最大输出 token / 思考等级**并持久化到 settings；发送时由主进程读取并换算预算与
+  `reasoning.effort`，渲染层不随 `ai:send` 传这些参数（防伪造，见 `docs/AI-PANEL-SPEC.md` §3.10）。
 - 历史：主进程持久化；渲染层每轮结束保存，新对话/历史恢复/删除走 `api.ai.*`。
 - 安全：`api.ai` 不返回明文 Key；只显示 maskedKey；assistant 内容一律 `renderMarkdown`（禁原始 HTML）。
 
@@ -235,4 +242,4 @@ window.__qm = {
 - 初始化异常时在页面显示错误块（含 message），不得白屏。
 - 不使用 `document.write`、`eval`、`new Function`；不拼接不可信 HTML（预览一律走 markdown-it）。
 - 代码注释用中文，文件头写模块用途；函数保持单一职责，单文件建议 < 450 行。
-- 兼容 Node/Electron 40（Chromium 142）：可用 `structuredClone`、`Array.at`、`CSS :has` 等现代特性。
+- 兼容 Node/Electron 40（Chromium 144）：可用 `structuredClone`、`Array.at`、`CSS :has` 等现代特性。
