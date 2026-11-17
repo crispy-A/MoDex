@@ -17,6 +17,9 @@ const fsService = require('./fs-service.js')
 const { StateStore } = require('./state-store.js')
 const { createAppMenu, showAbout, showShortcuts } = require('./menu.js')
 const { createAiService } = require('./ai/ai-service.js')
+const { createAppProtocolHandler, isInside } = require('./app-protocol.js')
+const { createTrustedSenderChecker } = require('./ipc-guard.js')
+const { classifyNavigation } = require('./navigation.js')
 
 const APP_ROOT = path.join(__dirname, '..', '..')
 const RENDERER_DIR = path.join(APP_ROOT, 'src', 'renderer')
@@ -116,38 +119,9 @@ let forceClose = false
 let closeDialogOpen = false
 let pendingCloseTimeout = null
 
-const MIME_TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.ico': 'image/x-icon',
-  '.bmp': 'image/bmp',
-  '.avif': 'image/avif',
-  '.woff2': 'font/woff2',
-  '.map': 'application/json; charset=utf-8',
-}
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp', '.avif'])
-const MAX_IMAGE_BYTES = 30 * 1024 * 1024
-const CSP_HEADER =
-  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' app: data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
-const IMAGE_CSP_HEADER = "default-src 'none'; style-src 'unsafe-inline'"
-
 // ---------------------------------------------------------------- 工具函数
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-
-function isInside(parentDir, childPath) {
-  const relative = path.relative(parentDir, childPath)
-  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative)
-}
 
 function effectiveDark() {
   const theme = store ? store.getSettings().theme : 'system'
@@ -173,53 +147,7 @@ function createMenu() {
 // ---------------------------------------------------------------- 自定义协议
 
 function registerAppProtocol() {
-  protocol.handle('app', async (request) => {
-    try {
-      const url = new URL(request.url)
-      if (url.host === 'bundle') {
-        const relative = decodeURIComponent(url.pathname.replace(/^\/+/, '')) || 'index.html'
-        const target = path.resolve(RENDERER_DIR, relative)
-        if (target !== RENDERER_DIR && !isInside(RENDERER_DIR, target)) {
-          return new Response('Forbidden', { status: 403 })
-        }
-        const data = await fsp.readFile(target)
-        const ext = path.extname(target).toLowerCase()
-        const headers = { 'content-type': MIME_TYPES[ext] || 'application/octet-stream' }
-        if (ext === '.html') {
-          headers['content-security-policy'] = CSP_HEADER
-        }
-        return new Response(data, { headers })
-      }
-
-      if (url.host === 'file') {
-        const absolute = decodeURIComponent(url.pathname.replace(/^\/+/, ''))
-        if (!absolute || !path.isAbsolute(absolute)) {
-          return new Response('Bad path', { status: 400 })
-        }
-        const ext = path.extname(absolute).toLowerCase()
-        if (!IMAGE_EXTENSIONS.has(ext)) {
-          return new Response('Forbidden', { status: 403 })
-        }
-        const stat = await fsp.stat(absolute)
-        if (!stat.isFile() || stat.size > MAX_IMAGE_BYTES) {
-          return new Response('Forbidden', { status: 403 })
-        }
-        const data = await fsp.readFile(absolute)
-        return new Response(data, {
-          headers: {
-            'content-type': MIME_TYPES[ext] || 'application/octet-stream',
-            'cache-control': 'no-store',
-            // 图片（尤其 SVG）不允许执行脚本或加载子资源
-            'content-security-policy': IMAGE_CSP_HEADER,
-          },
-        })
-      }
-
-      return new Response('Not found', { status: 404 })
-    } catch (err) {
-      return new Response(`Not found: ${err && err.message ? err.message : 'unknown'}`, { status: 404 })
-    }
-  })
+  protocol.handle('app', createAppProtocolHandler({ rendererDir: RENDERER_DIR }))
 }
 
 // ---------------------------------------------------------------- 文件夹监听（多根）
@@ -350,14 +278,15 @@ function createWindow() {
   })
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:/i.test(url)) shell.openExternal(url).catch(() => {})
+    if (classifyNavigation(url) === 'external') shell.openExternal(url).catch(() => {})
     return { action: 'deny' }
   })
 
   win.webContents.on('will-navigate', (event, url) => {
-    if (url.startsWith('app://bundle/')) return
+    const target = classifyNavigation(url)
+    if (target === 'allow') return
     event.preventDefault()
-    if (/^https?:/i.test(url)) shell.openExternal(url).catch(() => {})
+    if (target === 'external') shell.openExternal(url).catch(() => {})
   })
 
   win.webContents.on('render-process-gone', (_event, details) => {
@@ -434,18 +363,7 @@ function waitForDidFinishLoad(win, timeoutMs = 20000) {
 
 function registerIpc() {
   // 只接受主窗口渲染进程（app://bundle/ 页面）发起的 IPC，防止其他 frame/来源调用
-  const isTrustedSender = (event) => {
-    try {
-      if (!event || !event.sender) return false
-      const contents = mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
-      if (!contents || event.sender !== contents) return false
-      const frame = event.senderFrame
-      if (!frame || typeof frame.url !== 'string') return false
-      return frame.url.startsWith('app://bundle/')
-    } catch {
-      return false
-    }
-  }
+  const isTrustedSender = createTrustedSenderChecker({ getWindow: () => mainWindow })
 
   const handle = (channel, handler) => {
     ipcMain.handle(channel, async (event, ...args) => {
