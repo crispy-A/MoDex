@@ -1725,7 +1725,7 @@ async function start() {
 // ---------------------------------------------------------------------------
 
 if (typeof window !== 'undefined') {
-  window.__qm = {
+  const e2eHooks = {
     ready,
     getState() {
       return {
@@ -1775,6 +1775,10 @@ if (typeof window !== 'undefined') {
     async save() {
       await saveDocument({ silent: true })
     },
+  }
+  // 调试钩子只在 e2e / 自动保存验收模式暴露（主进程以 ?e2e=1 打开页面），普通运行不注册
+  if (new URLSearchParams(window.location.search).get('e2e') === '1') {
+    window.__qm = e2eHooks
   }
   ready.then(() => {
     document.documentElement.dataset.ready = '1'

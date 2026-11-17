@@ -1272,13 +1272,18 @@ export function initAiPanel(deps = {}) {
     if (!request || payload.requestId !== request.requestId) return
     switch (payload.type) {
       case 'started': {
-        // 主进程按上下文窗口裁剪了文档/历史时提示用户，避免误以为全文已发送
+        // 主进程按上下文窗口裁剪了文档/历史、或按窗口压缩了输出上限时提示用户
         const meta = payload.meta
         if (meta && (meta.truncated || Number(meta.droppedMessages) > 0)) {
           const parts = []
           if (meta.truncated) parts.push(`当前文档裁剪至 ${Number(meta.contextChars) || 0} 字`)
           if (Number(meta.droppedMessages) > 0) parts.push(`省略 ${Number(meta.droppedMessages)} 条较早消息`)
           showToast(`上下文预算：${parts.join('；')}`, 'info')
+        }
+        const configuredOutput = Number(currentSettings().aiMaxOutputTokens) || 0
+        const effectiveOutput = meta ? Number(meta.maxOutputTokens) || 0 : 0
+        if (configuredOutput > 0 && effectiveOutput > 0 && effectiveOutput !== configuredOutput) {
+          showToast(`输出上限按当前窗口调整为 ${effectiveOutput} token`, 'info')
         }
         break
       }

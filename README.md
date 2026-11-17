@@ -153,10 +153,14 @@ npm run installer
 ## 测试与验收
 
 ```powershell
-npm test                                   # 单元测试：文件系统 / 状态 / AI 协议与预算 / 安全回归 / 契约一致性（121 项）
+npm test                                   # 单元测试：文件系统 / 状态 / AI 协议与预算 / 安全回归 / 契约一致性（124 项）
+npm run check                              # 语法门禁：src / scripts / tests 下全部 JS/MJS 可解析
 npm run smoke                              # 两阶段端到端验收：界面断言 141 项 + 关闭自动保存
 npm run smoke -- --app "release/MoDex-1.0.0-win32-x64/MoDex.exe"   # 验收打包产物
 ```
+
+> CI：`.github/workflows/ci.yml` 在 `windows-latest` 上执行 `npm ci --ignore-scripts` → `npm run check` → `npm test`；
+> E2E 需要真实桌面窗口，保持为本地/发布前门禁。
 
 `npm run smoke` 会：
 
@@ -180,7 +184,7 @@ npm run smoke -- --app "release/MoDex-1.0.0-win32-x64/MoDex.exe"   # 验收打�
 P0=0、P1=0；P2 中的「外部修改覆盖」「IPC 来源校验」「CSP 补全」「图片响应 CSP」「第二实例打开」已修复，
 其余 P2 为不阻塞的后续建议。*（报告中的「轻墨」为更名前名称，即本产品 MoDex。）*
 **v1.1 起的增量**（AI 生成参数、回收站失败中止、并发打开令牌、主进程安全模块单测等）不在该快照内，
-当前单测已增至 **121 项**，以 `npm test` 与 git 历史为准。
+当前单测已增至 **124 项**，以 `npm test` 与 git 历史为准。
 多文件夹、单条导航栏、自动保存、预览样式、AI 助手、微动效与安装包的验收见报告 §13/§14/§15/§16/§17/§18/§19；AI 实现契约见
 `docs/AI-PANEL-SPEC.md`，设计稿见 `docs/mockups/`；7 套预览样式的调研对比见 `docs/MARKDOWN-STYLE-GALLERY.md`。
 
@@ -245,6 +249,10 @@ MoDex/
 - 应用图标以 `assets/logo/modex-logo.svg` 为单一矢量源：`npm run icons` 用 sharp 生成多尺寸 ICO/PNG，`npm run package` 用 rcedit 把图标与产品版本信息写入 `MoDex.exe`；安装包/快捷方式使用该 exe 图标。
 - 端到端验收通过 CDP `Page.captureScreenshot` 截图（能包含右键菜单等浮层），失败时回退 `webContents.capturePage`。
 - 更名说明：应用原名为「轻墨 / QingMo」，本版本更名为 **MoDex**；用户数据目录随产品名变为 `%APPDATA%\MoDex`。
+
+## 许可证
+
+MIT License，版权归 AQ 所有；详见 [LICENSE](LICENSE)。
 
 
 

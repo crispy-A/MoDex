@@ -323,7 +323,9 @@ function createWindow() {
     if (mainWindow === win) mainWindow = null
   })
 
-  win.loadURL('app://bundle/index.html')
+  // 调试/验收钩子 window.__qm 只在 e2e 与自动保存验收模式暴露，普通运行不注册
+  const e2eMode = Boolean(cli.e2e || cli.autosaveTest)
+  win.loadURL(e2eMode ? 'app://bundle/index.html?e2e=1' : 'app://bundle/index.html')
   return win
 }
 

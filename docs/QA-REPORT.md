@@ -4,7 +4,7 @@
 >
 > **后续版本附记（非本次审计范围）**：本报告是 **v1.0.0（2026-10-22）的独立审计快照**。此后仓库新增了
 > v1.1「AI 生成参数」（上下文窗口 / 最大输出 / 思考等级）、回收站失败中止（`TRASH_FAILED`）、并发打开令牌、
-> 主进程安全模块（`ipc-guard` / `app-protocol` / `navigation`）与对应单测；当前 `npm test` 为 **121 项**。
+> 主进程安全模块（`ipc-guard` / `app-protocol` / `navigation`）与对应单测；当前 `npm test` 为 **124 项**。
 > 这些增量尚未经过本报告的独立复验，以 README 与 git 历史为准。
 
 - 审计对象：`md-editor/`（Electron 40.10.2，原生 ES Modules 渲染层，零构建）
