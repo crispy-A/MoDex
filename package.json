@@ -1,7 +1,7 @@
 {
   "name": "modex",
   "productName": "MoDex",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MoDex：轻量化 Markdown 编辑器桌面应用，支持编辑、预览、文件与文件夹管理",
   "main": "src/main/main.js",
   "author": "AQ",

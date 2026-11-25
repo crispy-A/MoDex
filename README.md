@@ -112,16 +112,16 @@ npm start        # 启动应用
 
 ## 下载（GitHub Releases）
 
-- **Windows 安装包**：[MoDex-1.0.0-setup.exe](https://github.com/crispy-A/MoDex/releases/download/v1.0.0/MoDex-1.0.0-setup.exe)（98.2 MB）
-- **绿色便携版**：[MoDex-1.0.0-win32-x64-portable.zip](https://github.com/crispy-A/MoDex/releases/download/v1.0.0/MoDex-1.0.0-win32-x64-portable.zip)（130.8 MB，解压即用）
-- 校验文件（`.sha256`）与安装包/便携版同一 Release 页面提供。
+- **Windows 安装包**：[MoDex-1.1.0-setup.exe](https://github.com/crispy-A/MoDex/releases/download/v1.1.0/MoDex-1.1.0-setup.exe)（98.4 MB）
+- **绿色便携版**：[MoDex-1.1.0-win32-x64-portable.zip](https://github.com/crispy-A/MoDex/releases/download/v1.1.0/MoDex-1.1.0-win32-x64-portable.zip)（135.8 MB，解压即用）
+- 校验文件（`.sha256`）与安装包/便携版同一 Release 页面提供；更新说明见 [docs/RELEASE-NOTES-v1.1.0.md](docs/RELEASE-NOTES-v1.1.0.md)。
 - 仓库不再提交二进制文件（安装包/便携版通过 [Releases](https://github.com/crispy-A/MoDex/releases) 分发），保持仓库轻量。
 
 ## 打包便携版
 
 ```powershell
 npm run package
-# 产物：release/MoDex-1.0.0-win32-x64/MoDex.exe
+# 产物：release/MoDex-1.1.0-win32-x64/MoDex.exe
 ```
 
 打包脚本复用 `node_modules/electron/dist` 已解压的运行时，把 `src/` 与 `assets/` 放进
@@ -138,7 +138,7 @@ npm run package
 ```powershell
 winget install JRSoftware.InnoSetup   # 首次：安装 Inno Setup 6（仅构建机需要）
 npm run installer
-# 产物：release/MoDex-1.0.0-setup.exe（约 98 MB）
+# 产物：release/MoDex-1.1.0-setup.exe（约 98.4 MB）
 ```
 
 ![安装向导](docs/installer/installer-wizard.png)
@@ -147,7 +147,7 @@ npm run installer
 - 升级使用固定 AppId 覆盖安装；**卸载保留** `%APPDATA%\MoDex`（设置、AI 会话与加密后的 API Key），重装自动恢复；
 - 安装包未签名，首次运行 SmartScreen 可能提示「未知发布者」；桌面/开始菜单图标为 MoDex Logo；详细说明、构建参数与验证记录见
   [docs/INSTALLER.md](docs/INSTALLER.md)。
-- 已用「安装 → 已安装 exe 跑完整两阶段 smoke（141/141 + 阶段二）→ 静默卸载」验证清理干净。
+- 已用「安装 → 已安装 exe 跑完整两阶段 smoke（144/144 + 阶段二）→ 静默卸载」验证清理干净。
 - 安装包与便携版通过 **GitHub Releases** 分发（含 `.sha256` 校验）；仓库只保留源码与构建脚本，二进制不入库。
 
 ## 测试与验收
@@ -156,7 +156,7 @@ npm run installer
 npm test                                   # 单元测试：文件系统 / 保存服务 / 状态 / AI 协议与预算 / 安全回归 / 契约一致性（140 项）
 npm run check                              # 语法门禁：src / scripts / tests 下全部 JS/MJS 可解析
 npm run smoke                              # 两阶段端到端验收：界面断言 144 项 + 关闭自动保存
-npm run smoke -- --app "release/MoDex-1.0.0-win32-x64/MoDex.exe"   # 验收打包产物
+npm run smoke -- --app "release/MoDex-1.1.0-win32-x64/MoDex.exe"   # 验收打包产物
 ```
 
 > CI：`.github/workflows/ci.yml` 在 `windows-latest` 上执行 `npm ci --ignore-scripts` → `npm run check` → `npm test`；

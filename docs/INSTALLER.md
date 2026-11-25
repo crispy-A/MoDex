@@ -1,15 +1,17 @@
-﻿# MoDex Windows 安装包
+# MoDex Windows 安装包
 
 > 除了绿色便携版，MoDex 现在可以生成标准 Windows 安装包（Inno Setup）。
-> 构建产物：`release/MoDex-<version>-setup.exe`（本版本 **98.2 MB**，含 MoDex Logo）。
-> **分发方式**：安装包与便携版通过 GitHub Releases 发布（仓库不提交二进制）；本版本 Release：<https://github.com/crispy-A/MoDex/releases/tag/v1.0.0>。
+> 构建产物：`release/MoDex-<version>-setup.exe`（本版本 **98.4 MB**，含 MoDex Logo）。
+> **分发方式**：安装包与便携版通过 GitHub Releases 发布（仓库不提交二进制）；本版本 Release：<https://github.com/crispy-A/MoDex/releases/tag/v1.1.0>。
+
+> **v1.1.0 复核（本次）**：静默安装 → 已安装 exe 两阶段 smoke **144/144 + 阶段二** → 静默卸载，安装目录清理干净。
 
 ![安装向导](installer/installer-wizard.png)
 
 ## 下载（GitHub Releases）
 
-- 安装包：`MoDex-1.0.0-setup.exe`（98.2 MB，SHA256 `3e13c845b82a3a938cbbaec33835f1144d624fcabd7790e1349d25382ed55270`）
-- 便携版压缩包：`MoDex-1.0.0-win32-x64-portable.zip`（130.8 MB，SHA256 `9361c1b3a9f4f7f2df49644e7df1a8fa0960347f4eff552e86047592ad84bc1a`）
+- 安装包：`MoDex-1.1.0-setup.exe`（98.4 MB，SHA256 `0bb9c021408566aa12cad11b6668b7a3c05a62a67985b26c516fa51c305084f3`）
+- 便携版压缩包：`MoDex-1.1.0-win32-x64-portable.zip`（135.8 MB，SHA256 `087c21a0ac470fd3150848a1d406dfb773107d8d66e15d30d6507b437680b0bf`）
 - 校验文件：两个 `.sha256` 与资产同页提供。
 
 ## 构建
@@ -18,12 +20,12 @@
 
 ```powershell
 winget install JRSoftware.InnoSetup     # 首次安装构建工具
-cd md-editor
+cd MoDex
 npm run installer                       # 先打包便携版，再生成安装包
 npm run installer -- --skip-package     # 复用已有 portable 产物，快速重打安装包
 ```
 
-- 安装包：`release/MoDex-1.0.0-setup.exe`
+- 安装包：`release/MoDex-1.1.0-setup.exe`
 - 安装脚本：`installer/MoDex.iss`；构建脚本：`scripts/installer.mjs`
 - 中文安装界面：`installer/ChineseSimplified.isl`（Inno Setup 6.5+ 官方中文语言文件）
 - 若 `ISCC.exe` 不在默认路径，可设置环境变量 `INNO_SETUP_ISCC` 指向它。
@@ -41,16 +43,20 @@ npm run installer -- --skip-package     # 复用已有 portable 产物，快速�
 
 安装包内为完整应用（Electron 运行时 + `resources/app`），安装后目录约 338.8 MB、150 个文件；安装需要约 339 MB 磁盘空间。
 
-## 验证记录（本版本实测）
+## 验证记录
 
-- 静默安装：`MoDex-1.0.0-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=<临时目录>` → 退出码 0；
-  exe、`resources/app/src/main/ai/ai-service.js`、`unins000.exe` 均存在；开始菜单与桌面快捷方式创建成功；
-  HKCU 卸载注册项 `DisplayName=MoDex / DisplayVersion=1.0.0` 正确。
-- **用已安装的 exe 跑完整两阶段 smoke**：`npm run smoke -- --app "<安装目录>\MoDex.exe"` → **141/141 + 阶段二通过**（与便携版一致）。
-- 静默卸载：退出码 0；安装目录、开始菜单/桌面快捷方式、卸载注册项全部清理干净；`%APPDATA%\MoDex` 用户数据保留。
-- 安装包 SHA256（本版本）：`3e13c845b82a3a938cbbaec33835f1144d624fcabd7790e1349d25382ed55270`
-- 独立 QA 验收（报告 §19）已通过：安装/卸载/快捷方式/注册项/用户数据保留全部符合预期，安装后 exe 两阶段 smoke 141/141，
-  `npm run installer -- --skip-package` 重建产物 SHA256 一致（可复现构建）。
+### v1.1.0（本次）
+
+- 静默安装：`MoDex-1.1.0-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=<临时目录>` → 退出码 0；`MoDex.exe` 与 `unins000.exe` 存在。
+- **已安装 exe 两阶段 smoke**：`npm run smoke -- --app "<安装目录>\MoDex.exe"` → **144/144 + 阶段二通过**（与便携版一致）。
+- 静默卸载：退出码 0；安装目录清理干净；`%APPDATA%\MoDex` 用户数据保留。
+- 安装包 SHA256：`0bb9c021408566aa12cad11b6668b7a3c05a62a67985b26c516fa51c305084f3`
+- 便携版 zip SHA256：`087c21a0ac470fd3150848a1d406dfb773107d8d66e15d30d6507b437680b0bf`
+
+### v1.0.0（历史，QA 报告 §19）
+
+- 静默安装/卸载、快捷方式、注册项、用户数据保留与可复现构建均已逐项核对；安装后 exe 两阶段 smoke **141/141**。
+- 该轮次安装包 SHA256：`3e13c845b82a3a938cbbaec33835f1144d624fcabd7790e1349d25382ed55270`。
 
 ## 注意
 
