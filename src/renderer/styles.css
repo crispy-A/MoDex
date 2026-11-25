@@ -791,6 +791,61 @@ body.is-resizing {
   background: var(--panel);
 }
 
+/* 外部变更提示条：非阻塞，出现在文档头上方 */
+#file-change-bar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  color: var(--muted);
+  font-size: 12.5px;
+  background: var(--panel-soft);
+  border-bottom: 1px solid var(--border);
+}
+
+#file-change-bar[hidden] {
+  display: none;
+}
+
+#file-change-bar[data-kind='deleted'] #file-change-text {
+  color: var(--danger);
+}
+
+#file-change-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-change-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-change-actions button {
+  padding: 3px 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+}
+
+.file-change-actions button[hidden] {
+  display: none;
+}
+
+.file-change-actions button:hover {
+  background: var(--hover);
+}
+
 #doc-head {
   display: flex;
   flex: 0 0 auto;

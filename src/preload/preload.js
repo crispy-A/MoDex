@@ -63,6 +63,7 @@ const api = {
   rename: (targetPath, newName) => invoke('fs:rename', { targetPath, newName }),
   remove: (targetPath) => invoke('fs:remove', targetPath),
   pathInfo: (targetPath) => invoke('fs:path-info', targetPath),
+  setActiveFile: (targetPath) => invoke('fs:set-active-file', targetPath || null),
   setRoots: (rootPaths) => invoke('fs:set-roots', rootPaths),
 
   // Shell
@@ -92,6 +93,7 @@ const api = {
   // 事件
   onMenuAction: (cb) => subscribe('menu:action', cb),
   onTreeChanged: (cb) => subscribe('fs:tree-changed', cb),
+  onFileChanged: (cb) => subscribe('fs:file-changed', cb),
   onCloseRequested: (cb) => subscribe('app:close-requested', cb),
   onOpenPath: (cb) => subscribe('app:open-path', cb),
 

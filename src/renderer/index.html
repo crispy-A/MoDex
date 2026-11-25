@@ -135,6 +135,16 @@
 
       <!-- 主编辑区 -->
       <main id="main">
+        <div id="file-change-bar" hidden>
+          <span id="file-change-text"></span>
+          <div class="file-change-actions">
+            <button type="button" data-file-change="reload">重新加载</button>
+            <button type="button" data-file-change="keep">保留我的修改</button>
+            <button type="button" data-file-change="recreate" hidden>重新创建</button>
+            <button type="button" data-file-change="save-as">另存为…</button>
+            <button type="button" data-file-change="dismiss" aria-label="关闭提示">×</button>
+          </div>
+        </div>
         <div id="doc-head">
           <span id="doc-title">未命名.md</span>
           <span id="doc-dir"></span>

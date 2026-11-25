@@ -153,6 +153,8 @@ markdown-it 在 module 之前以普通 `<script src="vendor/markdown-it.min.js">
 - 未保存状态：内容变化即 dirty=true；`api.setDirty(true/false)` 同步主进程；标题变 `● 文件名 — MoDex`。
 - 窗口关闭：主进程 `isDirty` 时发 `onCloseRequested`；渲染层自动保存成功后 `api.requestClose()`，失败/取消则 `api.cancelClose()` 保持窗口。**不再弹「保存/不保存/取消」**。
 - 自动保存：切换文件 / 新建 / 关闭文档 / 关闭软件统一走 `autoSaveBeforeLeave`（见 `docs/AUTOSAVE-SPEC.md`）；`settings.autoSave` 为空闲自动保存预留字段，默认 false 且暂无 UI 开关，不参与上述流程。
+- 外部变更：`api.setActiveFile(path)` 让主进程监听当前文件；干净文档收到 `onFileChanged` 后自动重载，脏文档显示顶部提示条
+  （重新加载 / 保留我的修改 / 另存为 / 关闭；文件被删除时提供重新创建）。保存成功后会重新武装监听。
 
 ### 文件树
 - 数据：`api.listDir(dir)` 递归按需展开（点击目录时仅加载该层，缓存展开状态）。

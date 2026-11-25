@@ -123,6 +123,12 @@ let pendingCloseTimeout = null
 /** 主进程唯一写盘入口：版本校验、每路径串行、原子发布 */
 const saveService = createSaveService()
 
+// 当前打开文件的外部变更监听（P1）
+let activeFilePath = null
+let activeFileWatcher = null
+let activeFileTimer = null
+let activeFileLastSent = null
+
 // ---------------------------------------------------------------- 工具函数
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -226,6 +232,81 @@ function syncWatchers(rootPaths) {
   return [...watchers.keys()]
 }
 
+// ---------------------------------------------------------------- 当前文件监听（P1）
+
+function stopActiveFileWatcher() {
+  if (activeFileTimer) {
+    clearTimeout(activeFileTimer)
+    activeFileTimer = null
+  }
+  if (activeFileWatcher) {
+    try {
+      activeFileWatcher.close()
+    } catch {
+      /* 忽略关闭异常 */
+    }
+    activeFileWatcher = null
+  }
+}
+
+function scheduleActiveFileCheck() {
+  if (activeFileTimer) clearTimeout(activeFileTimer)
+  activeFileTimer = setTimeout(() => {
+    activeFileTimer = null
+    void checkActiveFile()
+  }, 150)
+}
+
+async function checkActiveFile() {
+  const target = activeFilePath
+  if (!target) return
+  const result = await saveService.inspect(target)
+  if (activeFilePath !== target) return
+  if (!result || result.ok === false) return
+
+  if (!result.exists) {
+    if (activeFileLastSent !== 'deleted') {
+      activeFileLastSent = 'deleted'
+      sendToRenderer('fs:file-changed', { path: target, kind: 'deleted', version: null })
+    }
+    return
+  }
+
+  const version = result.version
+  // 自写抑制：save-service 记录了最近一次本进程写入的哈希，rename 触发的 watcher 事件不算外部修改
+  const lastWrite = saveService.getLastWrite(target)
+  if (lastWrite && lastWrite.hash === version.hash && Date.now() - lastWrite.at < 3000) {
+    activeFileLastSent = version.hash
+    return
+  }
+  if (activeFileLastSent === version.hash) return
+  activeFileLastSent = version.hash
+  sendToRenderer('fs:file-changed', { path: target, kind: 'changed', version })
+}
+
+/** 切换监听目标；每次保存成功后会重新调用以重新武装 watcher（rename 可能让旧 watcher 失效） */
+async function setActiveFile(targetPath) {
+  const next =
+    typeof targetPath === 'string' && targetPath && path.isAbsolute(targetPath)
+      ? path.resolve(targetPath)
+      : null
+
+  stopActiveFileWatcher()
+  activeFilePath = next
+  activeFileLastSent = null
+  if (!next) return { ok: true, watched: null }
+
+  try {
+    activeFileWatcher = fs.watch(next, { persistent: false }, () => scheduleActiveFileCheck())
+    activeFileWatcher.on('error', () => stopActiveFileWatcher())
+  } catch (err) {
+    // 文件可能已被删除或不可监听：保留 activeFilePath，保存成功后还会重新武装
+    activeFileWatcher = null
+    console.warn('[watch] 无法监听当前文件：', err.message)
+  }
+  return { ok: true, watched: next }
+}
+
 // ---------------------------------------------------------------- 窗口
 
 function restoreWindowState(options) {
@@ -323,6 +404,8 @@ function createWindow() {
 
   win.on('closed', () => {
     stopAllWatchers()
+    stopActiveFileWatcher()
+    activeFilePath = null
     if (aiService) aiService.shutdown()
     if (mainWindow === win) mainWindow = null
   })
@@ -677,6 +760,8 @@ function registerIpc() {
     }
     return result
   })
+
+  handle('fs:set-active-file', async (_event, targetPath) => setActiveFile(targetPath))
 
   handle('fs:path-info', async (_event, targetPath) => fsService.pathInfo(targetPath))
 

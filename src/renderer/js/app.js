@@ -211,6 +211,8 @@ let saveStatus = 'idle'
 /** 保存单飞：同一文档同时只有一个保存在飞，期间的新编辑合并到下一轮 */
 let saveChain = null
 let saveAgain = false
+/** 外部变更提示条状态：{ kind: 'changed'|'deleted', version } */
+let fileChange = null
 const ready = new Promise((resolve) => {
   readyResolve = resolve
 })
@@ -626,6 +628,8 @@ function applyDocument({
   preview?.setBaseDir(path ? api.dirname(path) : null)
   renderPreview()
   tree?.setCurrentFile(path || null)
+  hideFileChangeBar()
+  syncActiveFileWatch(path || null)
   syncDirty()
   if (ui.statusPos) ui.statusPos.textContent = '行 1, 列 1'
   editor?.focus()
@@ -642,6 +646,8 @@ function resetToWelcome() {
   preview?.setBaseDir(null)
   renderPreview()
   tree?.setCurrentFile(null)
+  hideFileChangeBar()
+  syncActiveFileWatch(null)
   updateDocUi()
 }
 
@@ -970,6 +976,7 @@ async function runSaveLoop({ silent = false } = {}) {
       saveStatus = 'idle'
       syncDirty()
       tree?.setCurrentFile(doc.path)
+      syncActiveFileWatch(doc.path)
       if (!silent) toast?.success('已保存')
       await rememberRecent('file', doc.path)
       return true
@@ -1039,6 +1046,7 @@ async function forceSaveDocument(doc, { silent = false } = {}) {
     saveStatus = 'idle'
     syncDirty()
     tree?.setCurrentFile(doc.path)
+    syncActiveFileWatch(doc.path)
     if (!silent) toast?.success('已保存')
     return true
   }
@@ -1090,11 +1098,109 @@ async function saveDocumentAs({ silent = false } = {}) {
     saveStatus = 'idle'
     syncDirty()
     tree?.setCurrentFile(newPath)
+    syncActiveFileWatch(newPath)
     void tree?.refresh?.()
   }
   if (!silent) toast?.success('已保存')
   await rememberRecent('file', newPath)
   return true
+}
+
+// ---------------------------------------------------------------------------
+// 外部变更提示（P1）
+// ---------------------------------------------------------------------------
+
+function syncActiveFileWatch(targetPath) {
+  try {
+    const pending = api.setActiveFile?.(targetPath || null)
+    if (pending && typeof pending.catch === 'function') pending.catch(() => {})
+  } catch (error) {
+    console.warn('[MoDex] 设置当前文件监听失败', error)
+  }
+}
+
+function showFileChangeBar(kind, version) {
+  fileChange = { kind, version: version || null }
+  const bar = $('#file-change-bar')
+  if (!bar) return
+  bar.hidden = false
+  bar.dataset.kind = kind
+  const text = $('#file-change-text')
+  if (text) {
+    text.textContent = kind === 'deleted' ? '此文件已从磁盘删除' : '此文件已在磁盘上被修改'
+  }
+  const reload = bar.querySelector('[data-file-change="reload"]')
+  const keep = bar.querySelector('[data-file-change="keep"]')
+  const recreate = bar.querySelector('[data-file-change="recreate"]')
+  if (reload) reload.hidden = kind === 'deleted'
+  if (keep) keep.hidden = kind === 'deleted'
+  if (recreate) recreate.hidden = kind !== 'deleted'
+}
+
+function hideFileChangeBar() {
+  fileChange = null
+  const bar = $('#file-change-bar')
+  if (bar) bar.hidden = true
+}
+
+async function reloadExternalFile(doc) {
+  const ok = await loadFilePath(doc.path, { force: true })
+  if (ok) toast?.success('已重新加载磁盘上的修改')
+  hideFileChangeBar()
+}
+
+function handleExternalFileChange(payload = {}) {
+  const doc = state.doc
+  if (!doc || !doc.path || !payload.path) return
+  if (normalizeForCompare(doc.path) !== normalizeForCompare(payload.path)) return
+  // 保存进行中由主进程的迟到校验负责冲突，避免这里抢先替换文档
+  if (saveChain) return
+
+  if (payload.kind === 'deleted') {
+    showFileChangeBar('deleted', null)
+    return
+  }
+
+  const version = payload.version
+  if (version && doc.baseVersion && version.hash === doc.baseVersion.hash) {
+    hideFileChangeBar()
+    return
+  }
+
+  if (!doc.dirty) {
+    void reloadExternalFile(doc)
+    return
+  }
+  showFileChangeBar('changed', version)
+}
+
+async function onFileChangeBarClick(event) {
+  const button = event.target instanceof Element ? event.target.closest('[data-file-change]') : null
+  if (!button) return
+  const action = button.dataset.fileChange
+  const doc = state.doc
+  if (!doc) {
+    hideFileChangeBar()
+    return
+  }
+  if (action === 'dismiss' || action === 'keep') {
+    hideFileChangeBar()
+    return
+  }
+  if (action === 'reload') {
+    hideFileChangeBar()
+    await loadFilePath(doc.path, { force: true })
+    return
+  }
+  if (action === 'save-as') {
+    hideFileChangeBar()
+    await saveDocumentAs()
+    return
+  }
+  if (action === 'recreate') {
+    hideFileChangeBar()
+    await forceSaveDocument(doc, {})
+  }
 }
 
 async function closeDocument() {
@@ -1137,6 +1243,7 @@ function handleRenamed(oldPath, newPath, name) {
     preview?.setBaseDir(api.dirname(newPath))
     updateDocUi()
     tree?.setCurrentFile(newPath)
+    syncActiveFileWatch(newPath)
   }
   state.recentFiles = state.recentFiles.map((item) =>
     normalizeForCompare(item) === normalizeForCompare(oldPath) ? newPath : item
@@ -1698,6 +1805,11 @@ function bindApiEvents() {
     console.warn('[MoDex] 订阅文件树变化失败', error)
   }
   try {
+    api.onFileChanged?.((payload) => handleExternalFileChange(payload))
+  } catch (error) {
+    console.warn('[MoDex] 订阅文件变更失败', error)
+  }
+  try {
     api.onCloseRequested?.(() => {
       void handleCloseRequested()
     })
@@ -1717,6 +1829,7 @@ function wireEvents() {
   document.addEventListener('click', onDocumentClick)
   window.addEventListener('keydown', onGlobalKeydown)
   $('#app-submenu')?.addEventListener('click', onAppSubmenuClick)
+  $('#file-change-bar')?.addEventListener('click', onFileChangeBarClick)
   const editorInput = $('#editor')
   for (const eventName of ['select', 'keyup', 'mouseup', 'focus']) {
     editorInput?.addEventListener(eventName, () => scheduleAiContextRefresh())

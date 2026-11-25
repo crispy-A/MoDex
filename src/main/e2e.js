@@ -66,6 +66,18 @@ async function runE2E({ win, cli, paths }) {
     }
   }
 
+  /** 轮询页面条件，直到返回真值或超时 */
+  const waitUntil = async (label, script, timeoutMs = 8000, interval = 150) => {
+    const startedAt = Date.now()
+    let last = null
+    while (Date.now() - startedAt < timeoutMs) {
+      last = await run(label, script)
+      if (last) return last
+      await delay(interval)
+    }
+    return last
+  }
+
   /**
    * 截图：优先走 CDP Page.captureScreenshot（与合成器同源，能包含固定定位浮层，
    * 如右键菜单），失败时回退 electron capturePage。
@@ -798,6 +810,63 @@ async function runE2E({ win, cli, paths }) {
         assert('保存内容已写入磁盘', false, String(err.message))
       }
       await shot('07-after-save')
+
+      // 7.0 外部变更：干净文档自动重载；脏文档显示提示条并可重新加载
+      const externalReloadMarker = `EXTERNAL_RELOAD_${Date.now()}`
+      await fsp.appendFile(sampleFile, `\n\n${externalReloadMarker}\n`, 'utf8')
+      const autoReloaded = await waitUntil(
+        'external-change-auto-reload',
+        `const content = document.getElementById('editor').value;
+         return content.includes(${JSON.stringify(externalReloadMarker)})
+           ? { dirty: window.__qm.getState().dirty }
+           : null`
+      )
+      assert(
+        '外部修改后干净文档自动重载',
+        autoReloaded && autoReloaded.dirty === false,
+        autoReloaded
+      )
+
+      const localDirtyMarker = `LOCAL_DIRTY_${Date.now()}`
+      const externalDirtyMarker = `EXTERNAL_DIRTY_${Date.now()}`
+      await run(
+        'dirty-local-edit',
+        `const editor = document.getElementById('editor');
+         editor.focus();
+         editor.value = editor.value + ${JSON.stringify(`\n\n${localDirtyMarker}\n`)};
+         editor.dispatchEvent(new Event('input', { bubbles: true }));
+         await new Promise((resolve) => setTimeout(resolve, 320));
+         return window.__qm.getState().dirty`
+      )
+      await fsp.appendFile(sampleFile, `\n\n${externalDirtyMarker}\n`, 'utf8')
+      const changeBar = await waitUntil(
+        'external-change-bar',
+        `const bar = document.getElementById('file-change-bar');
+         if (bar.hasAttribute('hidden')) return null;
+         return { text: document.getElementById('file-change-text').textContent }`
+      )
+      assert('脏文档外部修改显示提示条', changeBar && /修改/.test(changeBar.text), changeBar)
+
+      await run(
+        'external-change-reload-click',
+        `const button = document.querySelector('#file-change-bar [data-file-change="reload"]');
+         button.click();
+         await new Promise((resolve) => setTimeout(resolve, 500));
+         return true`
+      )
+      const reloadedFromBar = await waitUntil(
+        'external-change-reload-done',
+        `const bar = document.getElementById('file-change-bar');
+         const content = document.getElementById('editor').value;
+         return bar.hasAttribute('hidden') && content.includes(${JSON.stringify(externalDirtyMarker)})
+           ? { dirty: window.__qm.getState().dirty }
+           : null`
+      )
+      assert(
+        '提示条重新加载后丢弃本地修改并载入磁盘版本',
+        reloadedFromBar && reloadedFromBar.dirty === false,
+        reloadedFromBar
+      )
 
       // 7.1 自动保存：切换文件时落盘
       const switchMarker = `AUTO_SAVE_SWITCH_${Date.now()}`

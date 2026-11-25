@@ -234,6 +234,8 @@ window.api = {
   // ---- 事件（返回取消订阅函数） ----
   onMenuAction(cb: (action: MenuAction) => void): () => void
   onTreeChanged(cb: (rootPath: string) => void): () => void
+  setActiveFile(targetPath: string | null): Promise<{ ok: true, watched: string | null }>   // 当前打开文件的文件级监听
+  onFileChanged(cb: (payload: { path: string, kind: 'changed' | 'deleted', version: FileVersion | null }) => void): () => void
   onCloseRequested(cb: () => void): () => void
   onOpenPath(cb: (targetPath: string) => void): () => void   // 应用已运行时第二实例/系统「用 MoDex 打开」转发的文件或文件夹路径
 
@@ -295,4 +297,6 @@ type MenuAction =
 - 保存冲突：所有写盘由主进程 `saveFile` 统一执行（内容哈希版本 + 每路径串行 + 临时文件 fsync + rename）。
   磁盘版本不一致时返回 `CONFLICT`：`changed` → 「覆盖保存 / 重新加载 / 另存为 / 取消」；
   `deleted` → 「重新创建 / 另存为 / 取消」。只有用户明确选择覆盖/重建才写入，其余不写盘。
+- 当前文件被外部修改/删除：主进程文件级 watcher 推 `onFileChanged`；渲染层在文档干净时自动重载，
+  脏时显示非阻塞提示条（重新加载 / 保留我的修改 / 另存为；被删除时额外提供重新创建）。
 - 应用已运行时再次「用 MoDex 打开」文件/文件夹：主进程 `second-instance` 解析参数后通过 `onOpenPath` 转发路径。
