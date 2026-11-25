@@ -29,6 +29,7 @@ type ErrorCode =
   | 'ENOTDIR'     // 期望目录却是文件
   | 'ENOTEMPTY'   // 目录非空，不能删除
   | 'TRASH_FAILED'// 无法移入系统回收站，删除中止（文件保留，不会静默永久删除）
+  | 'CONFLICT'    // 保存前发现磁盘版本已变化或被删除；不会写入，见 SaveResult
   | 'TOO_LARGE'   // 超过 5 MB 文本上限
   | 'BAD_ENCODING'// 非 UTF-8 文本
   | 'NOT_MARKDOWN'// 新建文件扩展名不是 .md / .markdown
@@ -43,6 +44,18 @@ interface Entry {
   mtimeMs: number       // 修改时间戳；目录为 0
   hidden: boolean       // 以 . 开头
 }
+
+/** 文件版本令牌：保存时的乐观并发前置条件（hash 覆盖原始字节，含 BOM） */
+interface FileVersion {
+  mtimeMs: number
+  size: number
+  hash: string          // sha256 hex
+}
+
+type SaveResult =
+  | { ok: true, path: string, version: FileVersion, size: number, mtimeMs: number }
+  | { ok: false, code: 'CONFLICT', reason: 'changed' | 'deleted', current: FileVersion | null, error: string }
+  | { ok: false, code: ErrorCode, error: string }
 ```
 
 `listDir` 返回的 `entries` 已排序：目录在前、文件在后，同类按名称 `localeCompare`（numeric + 中文排序）。
@@ -105,11 +118,12 @@ window.api = {
 
   // ---- 原生对话框（主进程弹窗） ----
   openFolder(): Promise<{ canceled: boolean, path?: string }>
-  openFile(): Promise<{ canceled: boolean, path?: string, content?: string, mtimeMs?: number, size?: number, error?: string }>
+  openFile(): Promise<{ canceled: boolean, path?: string, content?: string, mtimeMs?: number, size?: number, version?: FileVersion, hasBom?: boolean, error?: string }>
   saveFileAs(suggestedPath?: string | null): Promise<{ canceled: boolean, path?: string }>
   confirmUnsaved(fileName: string): Promise<'save' | 'discard' | 'cancel'>
   confirmDelete(displayPath: string): Promise<boolean>
-  confirmFileConflict(fileName: string): Promise<'overwrite' | 'reload' | 'cancel'>   // 保存前发现磁盘 mtime 变化
+  confirmFileConflict(fileName: string): Promise<'overwrite' | 'reload' | 'save-as' | 'cancel'>   // 保存前发现磁盘版本变化
+  confirmFileDeleted(fileName: string): Promise<'recreate' | 'save-as' | 'cancel'>                // 保存前发现文件被删除
   messageBox(opts: { type?: 'info'|'warning'|'error', message: string, detail?: string }): Promise<void>
   runMenuCommand(command:
     | 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'selectAll'
@@ -120,7 +134,25 @@ window.api = {
 
   // ---- 文件系统 ----
   listDir(dirPath: string): Promise<Result<{ path: string, entries: Entry[] }>>
-  readFile(filePath: string): Promise<Result<{ path: string, content: string, size: number, mtimeMs: number }>>
+  readFile(filePath: string): Promise<Result<{
+    path: string, content: string, size: number, mtimeMs: number,
+    version: FileVersion, hasBom: boolean
+  }>>
+  /**
+   * 主进程唯一写入口（原子写 + 版本校验 + 每路径串行）。
+   * - update：必须带 baseVersion；磁盘 hash 不一致返回 CONFLICT/changed，文件被删返回 CONFLICT/deleted
+   * - create：目标已存在返回 EEXIST
+   * - overwrite：用户明确确认覆盖（另存为），跳过版本校验
+   */
+  saveFile(input: {
+    filePath: string
+    content: string
+    baseVersion?: FileVersion | null
+    mode?: 'update' | 'create' | 'overwrite'
+    encoding?: 'utf8' | 'utf8-bom'
+    requestId?: string
+  }): Promise<SaveResult>
+  /** @deprecated 兼容旧调用；等价于 mode:'overwrite'，新代码请用 saveFile */
   writeFile(filePath: string, content: string): Promise<Result<{ path: string, size: number, mtimeMs: number }>>
   createFile(dirPath: string, name: string, content?: string): Promise<Result<{ path: string, name: string }>>
   createFolder(dirPath: string, name: string): Promise<Result<{ path: string, name: string }>>
@@ -260,6 +292,7 @@ type MenuAction =
 - Markdown 渲染必须 `html: false`（禁止原始 HTML），预览 `innerHTML` 只接受 markdown-it 输出。
 - 预览中的链接：`http/https` → `api.openExternal`；`#锚点` → 预览内滚动；相对 `.md` 链接 → 应用内打开（解析失败则提示）。
 - 预览中的图片：相对/本地路径 → `api.toAssetUrl(绝对路径)`；`http/https` 图片不自动加载（离线应用），显示为链接占位。
-- 保存冲突：`saveDocument` 写盘前用 `pathInfo` 比较 `mtimeMs`，若磁盘文件已被外部修改则调用 `api.confirmFileConflict`：
-  选择「覆盖保存」继续写入，「重新加载」用磁盘内容替换编辑器，「取消」不写盘。
+- 保存冲突：所有写盘由主进程 `saveFile` 统一执行（内容哈希版本 + 每路径串行 + 临时文件 fsync + rename）。
+  磁盘版本不一致时返回 `CONFLICT`：`changed` → 「覆盖保存 / 重新加载 / 另存为 / 取消」；
+  `deleted` → 「重新创建 / 另存为 / 取消」。只有用户明确选择覆盖/重建才写入，其余不写盘。
 - 应用已运行时再次「用 MoDex 打开」文件/文件夹：主进程 `second-instance` 解析参数后通过 `onOpenPath` 转发路径。

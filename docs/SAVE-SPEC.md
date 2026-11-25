@@ -1,6 +1,8 @@
 # MoDex 文件保存方案（草案 v1）
 
-> 状态：**待评审，未实现、未提交**。目标是把当前「渲染层比 mtime → 另发一次 IPC 写盘」的保存链路，
+> 状态：**P0 已实现**（`src/main/save-service.js`、`src/main/file-version.js`、`fs:save-file`、
+> 渲染层单飞保存循环、冲突四选一、BOM 往返、单测与 smoke）；P1（外部变更监听）/ P2（草稿恢复）待实现。
+> 目标是把当前「渲染层比 mtime → 另发一次 IPC 写盘」的保存链路，
 > 换成可证明不会静默覆盖、不会因并发/崩溃丢内容的方案。
 > 适用范围：`src/main/fs-service.js`、`src/main/main.js` 的 `fs:*` IPC、`src/preload/preload.js`、
 > `src/renderer/js/app.js` 的保存流程、`docs/CONTRACTS.md`。

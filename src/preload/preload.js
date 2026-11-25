@@ -50,12 +50,14 @@ const api = {
   confirmUnsaved: (fileName) => invoke('dialog:confirm-unsaved', fileName || '未命名.md'),
   confirmDelete: (displayPath) => invoke('dialog:confirm-delete', displayPath),
   confirmFileConflict: (fileName) => invoke('dialog:confirm-file-conflict', fileName || ''),
+  confirmFileDeleted: (fileName) => invoke('dialog:confirm-file-deleted', fileName || ''),
   messageBox: (opts) => invoke('dialog:message', opts || {}),
 
   // 文件系统
   listDir: (dirPath) => invoke('fs:list-dir', dirPath),
   readFile: (filePath) => invoke('fs:read-file', filePath),
   writeFile: (filePath, content) => invoke('fs:write-file', { filePath, content }),
+  saveFile: (payload) => invoke('fs:save-file', payload || {}),
   createFile: (dirPath, name, content) => invoke('fs:create-file', { dirPath, name, content }),
   createFolder: (dirPath, name) => invoke('fs:create-folder', { dirPath, name }),
   rename: (targetPath, newName) => invoke('fs:rename', { targetPath, newName }),

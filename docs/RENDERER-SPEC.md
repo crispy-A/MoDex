@@ -147,8 +147,8 @@ markdown-it 在 module 之前以普通 `<script src="vendor/markdown-it.min.js">
 - 启动：`api.bootstrap()` → 应用 settings（主题/视图/字号/侧栏）、最近列表；若 `initial.root` 打开文件树；若 `initial.file` 读取并打开；`initial.root` 为空但 settings.lastFolder 存在时**不自动打开**（避免打扰），仅填入最近列表。
 - 新建文档：内存缓冲，`path=null`、`name=未命名.md`、内容为空模板（`# 未命名\n\n` 可选空），标记 dirty 但尚未写盘；首次保存走 `saveFileAs`。
 - 打开文件：`api.openFile()` 或点击树节点 → 先 `autoSaveBeforeLeave`（当前文档 dirty 时有路径静默写盘、未命名走另存为，失败/取消则中止打开）→ 成功则显示内容并重置 dirty。
-- 保存：有 path → `api.writeFile`；无 path → `saveFileAs` 后再写。成功后更新 mtime、dirty=false、toast「已保存」、`api.setDirty(false)`、`api.addRecent('file', path)`。
-- 另存为：`saveFileAs(当前 path 或 最近目录/未命名.md)` → 写盘 → 当前文档切换到新路径。
+- 保存：有 path → `api.saveFile({ filePath, content, baseVersion, mode:'update' })`；无 path → `saveFileAs` 后以 `mode:'overwrite'` 写入。主进程做版本校验与原子写；成功后更新 `baseVersion`、dirty=false、toast「已保存」、`api.setDirty(false)`、`api.addRecent('file', path)`。
+- 另存为：`saveFileAs(当前 path 或 最近目录/未命名.md)` → `api.saveFile({ mode:'overwrite', encoding })` → 当前文档切换到新路径并保留 BOM 编码。
 - 关闭文档（菜单 `file:close`）：`autoSaveBeforeLeave` 成功后清空编辑区并显示欢迎页（不再弹保存询问）。
 - 未保存状态：内容变化即 dirty=true；`api.setDirty(true/false)` 同步主进程；标题变 `● 文件名 — MoDex`。
 - 窗口关闭：主进程 `isDirty` 时发 `onCloseRequested`；渲染层自动保存成功后 `api.requestClose()`，失败/取消则 `api.cancelClose()` 保持窗口。**不再弹「保存/不保存/取消」**。

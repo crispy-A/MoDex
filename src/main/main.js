@@ -20,6 +20,7 @@ const { createAiService } = require('./ai/ai-service.js')
 const { createAppProtocolHandler, isInside } = require('./app-protocol.js')
 const { createTrustedSenderChecker } = require('./ipc-guard.js')
 const { classifyNavigation } = require('./navigation.js')
+const { createSaveService } = require('./save-service.js')
 
 const APP_ROOT = path.join(__dirname, '..', '..')
 const RENDERER_DIR = path.join(APP_ROOT, 'src', 'renderer')
@@ -118,6 +119,9 @@ let isDirty = false
 let forceClose = false
 let closeDialogOpen = false
 let pendingCloseTimeout = null
+
+/** 主进程唯一写盘入口：版本校验、每路径串行、原子发布 */
+const saveService = createSaveService()
 
 // ---------------------------------------------------------------- 工具函数
 
@@ -505,7 +509,15 @@ function registerIpc() {
     const read = await fsService.readFile(filePath)
     if (!read.ok) return { canceled: false, error: read.error }
     store.addRecent('file', filePath)
-    return { canceled: false, path: filePath, content: read.content, size: read.size, mtimeMs: read.mtimeMs }
+    return {
+      canceled: false,
+      path: filePath,
+      content: read.content,
+      size: read.size,
+      mtimeMs: read.mtimeMs,
+      version: read.version,
+      hasBom: read.hasBom,
+    }
   })
 
   handle('dialog:save-file', async (_event, suggestedPath) => {
@@ -566,13 +578,30 @@ function registerIpc() {
       message: `“${fileName || '当前文档'}”已被其他程序修改`,
       detail:
         '磁盘上的内容与编辑器中的内容不一致。\n覆盖保存会丢失外部修改；重新加载会丢弃编辑器中的未保存内容。',
-      buttons: ['覆盖保存', '重新加载', '取消'],
-      defaultId: 2,
-      cancelId: 2,
+      buttons: ['覆盖保存', '重新加载', '另存为…', '取消'],
+      defaultId: 3,
+      cancelId: 3,
       noLink: true,
     })
     if (response === 0) return 'overwrite'
     if (response === 1) return 'reload'
+    if (response === 2) return 'save-as'
+    return 'cancel'
+  })
+
+  handle('dialog:confirm-file-deleted', async (_event, fileName) => {
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      title: APP_TITLE,
+      message: `“${fileName || '当前文档'}”已从磁盘删除`,
+      detail: '编辑器中的内容仍在。可以重新创建该文件、另存为副本，或取消。',
+      buttons: ['重新创建', '另存为…', '取消'],
+      defaultId: 2,
+      cancelId: 2,
+      noLink: true,
+    })
+    if (response === 0) return 'recreate'
+    if (response === 1) return 'save-as'
     return 'cancel'
   })
 
@@ -598,7 +627,18 @@ function registerIpc() {
   })
 
   handle('fs:write-file', async (_event, payload = {}) => {
-    const result = await fsService.writeFile(payload.filePath, payload.content)
+    // 兼容旧接口：无条件覆盖，但仍走原子写 + fsync
+    const result = await saveService.save({
+      filePath: payload.filePath,
+      content: payload.content,
+      mode: 'overwrite',
+    })
+    if (result.ok) store.addRecent('file', payload.filePath)
+    return result
+  })
+
+  handle('fs:save-file', async (_event, payload = {}) => {
+    const result = await saveService.save(payload)
     if (result.ok) store.addRecent('file', payload.filePath)
     return result
   })

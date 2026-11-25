@@ -206,6 +206,11 @@ let autoSaveWarned = false
 let lastAction = { name: '', at: 0 }
 let settingsPatch = {}
 let readyResolve = null
+/** 保存状态：idle | saving | error（用于状态栏展示） */
+let saveStatus = 'idle'
+/** 保存单飞：同一文档同时只有一个保存在飞，期间的新编辑合并到下一轮 */
+let saveChain = null
+let saveAgain = false
 const ready = new Promise((resolve) => {
   readyResolve = resolve
 })
@@ -524,7 +529,16 @@ function updateDocUi() {
     ui.statusPath.title = doc.path || ''
   }
   if (ui.statusWords) ui.statusWords.textContent = `${state.wordCount} 字`
-  if (ui.statusSave) ui.statusSave.textContent = doc.dirty ? '未保存' : '已保存'
+  if (ui.statusSave) {
+    ui.statusSave.textContent =
+      saveStatus === 'saving'
+        ? '保存中…'
+        : saveStatus === 'error'
+          ? '保存失败'
+          : doc.dirty
+            ? '未保存'
+            : '已保存'
+  }
 }
 
 /** 刷新按钮在无根文件夹时禁用（工具栏已精简，仅保留侧栏刷新入口） */
@@ -582,22 +596,31 @@ function renderPreview(force = false) {
 function handleContentChange(text) {
   if (!state.doc) return
   state.doc.content = text
+  if (saveStatus === 'error') saveStatus = 'idle'
   syncDirty()
   scheduleAnalysis()
   scheduleAutoSave()
 }
 
-function applyDocument({ path = null, content = '', mtimeMs = 0, markDirty = false } = {}) {
+function applyDocument({
+  path = null,
+  content = '',
+  version = null,
+  hasBom = false,
+  markDirty = false,
+} = {}) {
   const text = String(content ?? '')
   state.doc = {
     path: path || null,
     fileName: path ? api.basename(path) : '未命名.md',
     content: text,
     savedContent: markDirty ? null : text,
-    mtimeMs: Number(mtimeMs) || 0,
+    baseVersion: version || null,
+    encoding: hasBom ? 'utf8-bom' : 'utf8',
     dirty: false,
   }
   state.wordCount = countWords(text)
+  saveStatus = 'idle'
   autoSaveWarned = false
   editor?.setContent(text)
   preview?.setBaseDir(path ? api.dirname(path) : null)
@@ -612,6 +635,7 @@ function applyDocument({ path = null, content = '', mtimeMs = 0, markDirty = fal
 function resetToWelcome() {
   state.doc = null
   state.wordCount = 0
+  saveStatus = 'idle'
   lastReportedDirty = null
   reportDirty(false)
   editor?.setContent('')
@@ -645,7 +669,7 @@ async function newDocument() {
 
 /**
  * 离开当前文档前的自动保存（切换文件 / 新建 / 关闭文档 / 关闭窗口共用）。
- * 有 path 静默写盘（保留 mtime 冲突检测），未命名文档走另存为。
+ * 有 path 静默写盘（走版本校验与冲突处理），未命名文档走另存为。
  * @returns {Promise<boolean>} true 表示可以继续离开；false 表示取消或失败，应中止操作。
  */
 async function autoSaveBeforeLeave() {
@@ -698,7 +722,12 @@ async function loadFilePath(path, { force = false } = {}) {
     toast?.error(result?.error || `无法打开文件：${path}`)
     return false
   }
-  applyDocument({ path: result.path || path, content: result.content, mtimeMs: result.mtimeMs })
+  applyDocument({
+    path: result.path || path,
+    content: result.content,
+    version: result.version,
+    hasBom: result.hasBom,
+  })
   await rememberRecent('file', result.path || path)
   return true
 }
@@ -724,7 +753,12 @@ async function openFileDialog() {
   }
   if (!result.path) return
   if (typeof result.content === 'string') {
-    applyDocument({ path: result.path, content: result.content, mtimeMs: result.mtimeMs })
+    applyDocument({
+      path: result.path,
+      content: result.content,
+      version: result.version,
+      hasBom: result.hasBom,
+    })
     await rememberRecent('file', result.path)
   } else {
     await loadFilePath(result.path, { force: true })
@@ -873,55 +907,142 @@ function suggestedSavePath() {
   }
 }
 
+/**
+ * 保存当前文档。同一时刻只允许一个保存循环在飞；保存期间的新编辑合并到下一轮，
+ * 避免「旧请求晚完成 → 覆盖新内容/假已保存」。
+ */
 async function saveDocument({ silent = false } = {}) {
   if (!state.doc) return false
   if (!state.doc.path) return saveDocumentAs({ silent })
-  const doc = state.doc
-  const content = doc.content
-  // 外部修改冲突检测：磁盘 mtime 与载入时记录不一致时先询问，避免静默覆盖别人改过的内容
-  if (doc.path && Number(doc.mtimeMs) > 0) {
-    let info = null
-    try {
-      info = await api.pathInfo(doc.path)
-    } catch (error) {
-      console.warn('[MoDex] 检查文件修改时间失败', error)
-    }
-    if (info && info.ok && info.exists && Math.abs(Number(info.mtimeMs) - Number(doc.mtimeMs)) > 1) {
-      let choice = 'cancel'
-      try {
-        choice = await api.confirmFileConflict(doc.fileName)
-      } catch (error) {
-        toast?.error(`无法确认外部修改：${error?.message || error}`)
-        return false
-      }
-      if (choice === 'reload') {
-        await loadFilePath(doc.path, { force: true })
-        return false
-      }
-      if (choice !== 'overwrite') return false
-    }
+  if (saveChain) {
+    saveAgain = true
+    return saveChain
   }
+  saveChain = (async () => {
+    let ok = false
+    do {
+      saveAgain = false
+      ok = await runSaveLoop({ silent })
+    } while (ok && saveAgain)
+    saveAgain = false
+    return ok
+  })().finally(() => {
+    saveChain = null
+  })
+  return saveChain
+}
+
+async function runSaveLoop({ silent = false } = {}) {
+  const doc = state.doc
+  if (!doc) return false
+
+  setSaveStatus('saving')
+  for (;;) {
+    const content = doc.content
+    let result
+    try {
+      result = await api.saveFile({
+        filePath: doc.path,
+        content,
+        baseVersion: doc.baseVersion,
+        mode: 'update',
+        encoding: doc.encoding || 'utf8',
+      })
+    } catch (error) {
+      setSaveStatus('error')
+      toast?.error(`保存失败：${error?.message || error}`)
+      return false
+    }
+
+    if (!result || !result.ok) {
+      if (result?.code === 'CONFLICT') {
+        return handleSaveConflict(result, doc, { silent })
+      }
+      setSaveStatus('error')
+      toast?.error(result?.error || '保存失败')
+      return false
+    }
+
+    if (state.doc !== doc) return true
+    doc.baseVersion = result.version
+    if (doc.content === content) {
+      doc.savedContent = content
+      saveStatus = 'idle'
+      syncDirty()
+      tree?.setCurrentFile(doc.path)
+      if (!silent) toast?.success('已保存')
+      await rememberRecent('file', doc.path)
+      return true
+    }
+    // 保存期间又编辑了：继续保存最新内容，不能把旧内容标记为已保存
+  }
+}
+
+function setSaveStatus(status) {
+  saveStatus = status
+  updateDocUi()
+}
+
+async function handleSaveConflict(result, doc, { silent = false } = {}) {
+  try {
+    if (result.reason === 'deleted') {
+      const choice = await api.confirmFileDeleted(doc.fileName)
+      if (choice === 'recreate') return forceSaveDocument(doc, { silent })
+      if (choice === 'save-as') return saveDocumentAs({ silent })
+      saveStatus = 'idle'
+      syncDirty()
+      return false
+    }
+
+    const choice = await api.confirmFileConflict(doc.fileName)
+    if (choice === 'overwrite') return forceSaveDocument(doc, { silent })
+    if (choice === 'reload') {
+      await loadFilePath(doc.path, { force: true })
+      return false
+    }
+    if (choice === 'save-as') return saveDocumentAs({ silent })
+    saveStatus = 'idle'
+    syncDirty()
+    return false
+  } catch (error) {
+    setSaveStatus('error')
+    toast?.error(`无法处理保存冲突：${error?.message || error}`)
+    return false
+  }
+}
+
+/** 用户明确选择覆盖后写入；内容在写入期间又变化时回到 update 循环 */
+async function forceSaveDocument(doc, { silent = false } = {}) {
+  const content = doc.content
   let result
   try {
-    result = await api.writeFile(doc.path, content)
+    result = await api.saveFile({
+      filePath: doc.path,
+      content,
+      mode: 'overwrite',
+      encoding: doc.encoding || 'utf8',
+    })
   } catch (error) {
+    setSaveStatus('error')
     toast?.error(`保存失败：${error?.message || error}`)
     return false
   }
   if (!result || !result.ok) {
+    setSaveStatus('error')
     toast?.error(result?.error || '保存失败')
     return false
   }
-  // 保存期间文档可能已被切换，只有仍是同一文档时才更新状态
-  if (state.doc === doc) {
+  if (state.doc !== doc) return true
+  doc.baseVersion = result.version
+  if (doc.content === content) {
     doc.savedContent = content
-    doc.mtimeMs = Number(result.mtimeMs) || doc.mtimeMs
+    saveStatus = 'idle'
     syncDirty()
     tree?.setCurrentFile(doc.path)
+    if (!silent) toast?.success('已保存')
+    return true
   }
-  if (!silent) toast?.success('已保存')
-  await rememberRecent('file', doc.path)
-  return true
+  return runSaveLoop({ silent })
 }
 
 async function saveDocumentAs({ silent = false } = {}) {
@@ -936,24 +1057,37 @@ async function saveDocumentAs({ silent = false } = {}) {
     return false
   }
   if (!picked || picked.canceled || !picked.path) return false
+
+  setSaveStatus('saving')
   let result
   try {
-    result = await api.writeFile(picked.path, content)
+    result = await api.saveFile({
+      filePath: picked.path,
+      content,
+      mode: 'overwrite',
+      encoding: doc.encoding || 'utf8',
+    })
   } catch (error) {
+    setSaveStatus('error')
     toast?.error(`保存失败：${error?.message || error}`)
     return false
   }
   if (!result || !result.ok) {
+    setSaveStatus('error')
     toast?.error(result?.error || '保存失败')
     return false
   }
+
   const newPath = result.path || picked.path
   if (state.doc === doc) {
     doc.path = newPath
     doc.fileName = api.basename(newPath)
-    doc.savedContent = content
-    doc.mtimeMs = Number(result.mtimeMs) || 0
+    doc.baseVersion = result.version
     preview?.setBaseDir(api.dirname(newPath))
+    if (doc.content === content) {
+      doc.savedContent = content
+    }
+    saveStatus = 'idle'
     syncDirty()
     tree?.setCurrentFile(newPath)
     void tree?.refresh?.()

@@ -8,6 +8,7 @@
 const fs = require('node:fs')
 const fsp = fs.promises
 const path = require('node:path')
+const { hasUtf8Bom, stripUtf8Bom, makeFileVersion } = require('./file-version.js')
 
 const MAX_TEXT_BYTES = 5 * 1024 * 1024
 const MAX_NAME_LENGTH = 200
@@ -181,13 +182,21 @@ async function readFile(filePath) {
   let content
   try {
     // fatal: true —— 遇到非法 UTF-8 序列直接抛错，避免保存时静默损坏内容
-    content = new TextDecoder('utf-8', { fatal: true }).decode(buffer)
+    content = new TextDecoder('utf-8', { fatal: true }).decode(stripUtf8Bom(buffer))
   } catch {
     return fail('BAD_ENCODING', `${ERROR_TEXT.BAD_ENCODING}：${filePath}`)
   }
   if (content.includes('\u0000')) return fail('BAD_ENCODING', `${ERROR_TEXT.BAD_ENCODING}：${filePath}`)
 
-  return ok({ path: filePath, content, size: buffer.length, mtimeMs: stat.mtimeMs })
+  return ok({
+    path: filePath,
+    content,
+    size: buffer.length,
+    mtimeMs: stat.mtimeMs,
+    // 保存时用于乐观并发校验；hash 覆盖原始字节（含 BOM），避免 mtime 粒度/仅触碰时间造成误判
+    version: makeFileVersion(stat, buffer),
+    hasBom: hasUtf8Bom(buffer),
+  })
 }
 
 /** 原子写入：先写同目录临时文件再 rename，失败时清理临时文件 */
